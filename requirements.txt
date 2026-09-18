@@ -1,2 +1,1 @@
-streamlit
-streamlit-kanban
+streamlit>=1.36
