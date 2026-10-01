@@ -66,10 +66,26 @@ st.markdown("""
     .metric-value { font-size: 22px; font-weight: 700; color: #0f172a; }
     .metric-label { font-size: 11px; font-weight: 600; color: #64748b; }
 
+    /* SEPARAÇÃO VISUAL E FUNDO SUAVE PARA CADA COLUNA DO KANBAN */
+    div[data-testid="stColumn"]:has(.kanban-header) {
+        background-color: #f1f5f9;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 10px 8px !important;
+    }
+
+    /* CABEÇALHO COM ALTURA PADRONIZADA IGUAL PARA TODAS AS COLUNAS */
     .kanban-header {
-        padding: 8px 12px; border-radius: 8px; font-weight: 700;
-        font-size: 12px; display: flex; justify-content: space-between;
-        align-items: center; margin-bottom: 10px;
+        padding: 6px 10px;
+        border-radius: 8px;
+        font-weight: 700;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+        height: 52px;
+        min-height: 52px;
+        box-sizing: border-box;
     }
 
     .patient-card-compact {
@@ -100,7 +116,6 @@ def inicializar_estado():
     if 'idx_cabecalho' not in st.session_state:
         st.session_state['idx_cabecalho'] = 0
     
-    # Estrutura com regras de obrigatoriedade por etapa
     if 'checklist_padrao' not in st.session_state:
         st.session_state['checklist_padrao'] = [
             {"nome": "Conferência de exames de alta", "etapas_obrigatorias": ["Altas Prescritas"]},
@@ -110,7 +125,6 @@ def inicializar_estado():
             {"nome": "Cateteres e acessos retirados", "etapas_obrigatorias": ["Transporte", "Alta Realizada"]}
         ]
     else:
-        # Migração automática de formato antigo (strings) para formato com dicionário
         novos_items = []
         for item in st.session_state['checklist_padrao']:
             if isinstance(item, str):
@@ -255,11 +269,10 @@ def main():
         </div>
     """, unsafe_allow_html=True)
 
-    # --- REGIAO DE GERENCIAMENTO DE CHECKLIST (NO TOPO) ---
+    # --- GERENCIAMENTO DE CHECKLIST (NO TOPO) ---
     with st.expander("📋 Configuração de Checklist Padrão e Trava de Segurança", expanded=False):
         st.caption("Cadastre os itens de checklist e defina em quais etapas do Kanban eles são **obrigatórios**.")
         
-        # Exibe itens existentes
         for idx, item in enumerate(st.session_state['checklist_padrao']):
             col_idx, col_nome, col_etapas, col_del = st.columns([0.05, 0.4, 0.45, 0.1])
             col_idx.write(f"**#{idx+1}**")
@@ -292,7 +305,6 @@ def main():
                 })
                 st.rerun()
 
-    # Se a planilha não estiver conectada, avisa o usuário
     if st.session_state['planilha_ativa'] is None:
         st.warning("⚠️ Planilha não conectada! Por favor, configure a conexão no painel na parte inferior da página.")
 
@@ -351,7 +363,7 @@ def main():
 
             st.markdown("<br>", unsafe_allow_html=True)
 
-            # --- QUADRO KANBAN ---
+            # --- QUADRO KANBAN REFORMULADO ---
             cols_kanban = st.columns(len(ETAPAS_KANBAN))
 
             for idx, cfg in enumerate(ETAPAS_KANBAN):
@@ -359,10 +371,16 @@ def main():
                 with cols_kanban[idx]:
                     df_col = df_filtrado[df_filtrado['ETAPA_KANBAN'] == nome_etapa]
                     
+                    # CABEÇALHO DA COLUNA COM ALTURA FIXA E FORMATO PADRONIZADO
                     st.markdown(f"""
-                        <div class="kanban-header" style="background-color: {cfg['cor']}; border-left: 3px solid {cfg['borda']}; color: #1e293b;">
-                            <span>{cfg['icone']} {nome_etapa}</span>
-                            <span style="background: white; padding: 1px 6px; border-radius: 8px; font-size: 11px;">{len(df_col)}</span>
+                        <div class="kanban-header" style="background-color: {cfg['cor']}; border-left: 4px solid {cfg['borda']};">
+                            <div style="display: flex; align-items: center; gap: 6px; line-height: 1.25; font-size: 11px; font-weight: 700; color: #1e293b;">
+                                <span>{cfg['icone']}</span>
+                                <span>{nome_etapa}</span>
+                            </div>
+                            <span style="background: white; padding: 2px 7px; border-radius: 10px; font-size: 11px; font-weight: 800; color: #0f172a; box-shadow: 0 1px 2px rgba(0,0,0,0.06); flex-shrink: 0;">
+                                {len(df_col)}
+                            </span>
                         </div>
                     """, unsafe_allow_html=True)
 
@@ -393,14 +411,13 @@ def main():
                             st.write(f"⏱️ **Alta Médica:** {hora_med} | **Alta Hospitalar:** {hora_hosp}")
                             st.divider()
 
-                            # Carrega estado do Checklist individual
                             chk_json_str = row.get('CHECKLIST_JSON', '{}')
                             try:
                                 chk_estado_dict = json.loads(chk_json_str) if chk_json_str else {}
                             except:
                                 chk_estado_dict = {}
 
-                            # 1. Movimentação de Etapa com Validação de Regras
+                            # 1. Movimentação de Etapa com Validação
                             st.write("➡️ **Mover Etapa do Paciente:**")
                             nova_etapa = st.selectbox(
                                 "Selecione a nova etapa:",
@@ -410,18 +427,15 @@ def main():
                             )
 
                             if nova_etapa != nome_etapa:
-                                # VALIDAÇÃO DOS CHECKS OBRIGATÓRIOS PARA A NOVA ETAPA
                                 pendencias = []
                                 idx_nova = LISTA_ETAPAS_NOMES.index(nova_etapa)
                                 idx_atual = LISTA_ETAPAS_NOMES.index(nome_etapa)
 
-                                # Apenas valida ao avançar de etapa
                                 if idx_nova > idx_atual:
                                     for item_cfg in st.session_state['checklist_padrao']:
                                         item_nome = item_cfg['nome']
                                         etapas_req = item_cfg.get('etapas_obrigatorias', [])
                                         
-                                        # Verifica se a etapa destino exige este item
                                         item_exigido = False
                                         for req in etapas_req:
                                             if req in LISTA_ETAPAS_NOMES:
@@ -457,7 +471,7 @@ def main():
 
                             st.divider()
 
-                            # 3. Checklist com Indicador Visível de Obrigatoriedade
+                            # 3. Checklist
                             st.write("📋 **Checklist Padronizado de Alta:**")
                             houve_mudanca_chk = False
                             
@@ -481,7 +495,7 @@ def main():
                                 atualizar_celula_gsheets(aba_selecionada, orig_idx, "CHECKLIST_JSON", novo_chk_json)
                                 st.rerun()
 
-                            # 4. Histórico de Alterações
+                            # 4. Histórico
                             with st.expander("📜 Histórico de Alterações (Timestamps)"):
                                 logs_str = row.get('HISTORICO_LOGS', '[]')
                                 try:
@@ -495,7 +509,7 @@ def main():
                                 else:
                                     st.caption("Nenhum histórico registrado ainda.")
 
-            # --- ABA DE INDICADORES DE TEMPO E LEAD TIME ---
+            # --- INDICADORES DE TEMPO E LEAD TIME ---
             st.markdown("<br>---", unsafe_allow_html=True)
             st.subheader("📈 Indicadores de Tempo & Lead Time")
 
@@ -556,7 +570,7 @@ def main():
                         st.info("Nenhuma pendência mapeada na Enfermagem no momento.")
 
     # ==========================================
-    # SEÇÃO DE CONEXÃO COM GOOGLE SHEETS (RODAPÉ/OCULTO)
+    # PAINEL DE CONEXÃO GOOGLE SHEETS (RODAPÉ)
     # ==========================================
     st.markdown("<br><br>---", unsafe_allow_html=True)
     with st.expander("🔌 Conexão e Configuração do Google Sheets (Avançado)", expanded=(st.session_state['planilha_ativa'] is None)):
