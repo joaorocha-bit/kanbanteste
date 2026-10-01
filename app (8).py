@@ -17,7 +17,7 @@ st.set_page_config(
 )
 
 # ==========================================
-# CONSTANTES E CONFIGURAÇÕES
+# CONSTANTES E CONFIGURAÇÕES DO KANBAN
 # ==========================================
 ETAPAS_KANBAN = [
     {"nome": "Altas Previstas", "cor": "#e8f2ff", "borda": "#2f80ed", "icone": "📅"},
@@ -50,7 +50,6 @@ st.markdown("""
     <style>
     .stApp { background-color: #f8fafc; }
     
-    /* Header Principal */
     .header-container {
         display: flex; align-items: center; justify-content: space-between;
         background-color: #ffffff; padding: 12px 20px; border-radius: 10px;
@@ -59,7 +58,6 @@ st.markdown("""
     .brand-title { font-size: 20px; font-weight: 800; color: #0f172a; margin: 0; }
     .brand-subtitle { font-size: 12px; color: #64748b; margin: 0; }
 
-    /* Indicadores Superiores */
     .metric-card {
         background-color: #ffffff; padding: 12px 16px; border-radius: 10px;
         border: 1px solid #e2e8f0; box-shadow: 0 1px 2px rgba(0,0,0,0.03);
@@ -68,14 +66,12 @@ st.markdown("""
     .metric-value { font-size: 22px; font-weight: 700; color: #0f172a; }
     .metric-label { font-size: 11px; font-weight: 600; color: #64748b; }
 
-    /* Cabeçalho da Coluna Kanban */
     .kanban-header {
         padding: 8px 12px; border-radius: 8px; font-weight: 700;
         font-size: 12px; display: flex; justify-content: space-between;
         align-items: center; margin-bottom: 10px;
     }
 
-    /* Card do Paciente Enxuto */
     .patient-card-compact {
         background-color: #ffffff; border-radius: 8px; padding: 10px 12px;
         margin-bottom: 8px; border: 1px solid #cbd5e1;
@@ -92,7 +88,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# INICIALIZAÇÃO DE ESTADO
+# GESTÃO DE ESTADO (Session State)
 # ==========================================
 def inicializar_estado():
     if 'client_gsheets' not in st.session_state:
@@ -104,17 +100,27 @@ def inicializar_estado():
     if 'idx_cabecalho' not in st.session_state:
         st.session_state['idx_cabecalho'] = 0
     
+    # Estrutura com regras de obrigatoriedade por etapa
     if 'checklist_padrao' not in st.session_state:
         st.session_state['checklist_padrao'] = [
-            "Conferência de exames de alta",
-            "Receituário entregue ao paciente",
-            "Orientações de enfermagem explicadas",
-            "Acompanhante ciente do horário",
-            "Cateteres e acessos retirados"
+            {"nome": "Conferência de exames de alta", "etapas_obrigatorias": ["Altas Prescritas"]},
+            {"nome": "Receituário entregue ao paciente", "etapas_obrigatorias": ["Altas Prescritas"]},
+            {"nome": "Orientações de enfermagem explicadas", "etapas_obrigatorias": ["Processo de Enfermagem"]},
+            {"nome": "Acompanhante ciente do horário", "etapas_obrigatorias": []},
+            {"nome": "Cateteres e acessos retirados", "etapas_obrigatorias": ["Transporte", "Alta Realizada"]}
         ]
+    else:
+        # Migração automática de formato antigo (strings) para formato com dicionário
+        novos_items = []
+        for item in st.session_state['checklist_padrao']:
+            if isinstance(item, str):
+                novos_items.append({"nome": item, "etapas_obrigatorias": []})
+            else:
+                novos_items.append(item)
+        st.session_state['checklist_padrao'] = novos_items
 
 # ==========================================
-# CONEXÃO E GERENCIAMENTO GOOGLE SHEETS
+# INTEGRAÇÃO E BANCO DE DADOS (GOOGLE SHEETS)
 # ==========================================
 def conectar_google_sheets(arquivo_credenciais, url_planilha):
     try:
@@ -126,7 +132,7 @@ def conectar_google_sheets(arquivo_credenciais, url_planilha):
         st.session_state['planilha_ativa'] = planilha
         return True
     except Exception as e:
-        st.error(f"Erro ao conectar com Google Sheets: {e}")
+        st.error(f"Erro na autenticação com o Google Sheets: {e}")
         return False
 
 def carregar_dados_aba(aba_nome):
@@ -139,7 +145,6 @@ def carregar_dados_aba(aba_nome):
             st.session_state['dados_df'] = pd.DataFrame()
             return
 
-        # Localiza linha do cabeçalho
         idx_cabecalho = 0
         for i, linha in enumerate(linhas[:5]):
             linha_upper = [str(cell).strip().upper() for cell in linha]
@@ -172,7 +177,6 @@ def carregar_dados_aba(aba_nome):
             st.session_state['dados_df'] = df
             return
 
-        # Colunas de Controle
         if "ETAPA_KANBAN" not in df.columns:
             df["ETAPA_KANBAN"] = LISTA_ETAPAS_NOMES[0]
         if "STATUS_ENFERMAGEM" not in df.columns:
@@ -210,7 +214,6 @@ def atualizar_celula_gsheets(aba_nome, linha_pandas, nome_coluna, novo_valor):
         st.error(f"Erro ao salvar no Google Sheets: {e}")
 
 def registrar_evento_log(aba_nome, linha_pandas, tipo_evento, detalhe):
-    """Registra data/hora e tipo de alteração no histórico do paciente."""
     df = st.session_state['dados_df']
     logs_str = df.at[linha_pandas, 'HISTORICO_LOGS'] if 'HISTORICO_LOGS' in df.columns else "[]"
     
@@ -225,7 +228,6 @@ def registrar_evento_log(aba_nome, linha_pandas, tipo_evento, detalhe):
         "detalhe": detalhe
     }
     logs.append(novo_log)
-    
     logs_json = json.dumps(logs, ensure_ascii=False)
     atualizar_celula_gsheets(aba_nome, linha_pandas, "HISTORICO_LOGS", logs_json)
 
@@ -243,277 +245,336 @@ def obter_valor_campo(row, nome_base, padrao='--:--'):
 def main():
     inicializar_estado()
     
+    # --- HEADER PRINCIPAL ---
     st.markdown("""
         <div class="header-container">
             <div>
                 <h1 class="brand-title">🏥 VidaMais | Kanban de Alta Hospitalar</h1>
-                <p class="brand-subtitle">Gestão em tempo real de altas com monitoramento de tempo e auditoria.</p>
+                <p class="brand-subtitle">Gestão visual e monitoramento de fluxo de alta hospitalar.</p>
             </div>
         </div>
     """, unsafe_allow_html=True)
 
-    with st.expander("⚙️ Conexão & Checklist Padronizado", expanded=(st.session_state['planilha_ativa'] is None)):
-        col_cfg1, col_cfg2 = st.columns(2)
+    # --- REGIAO DE GERENCIAMENTO DE CHECKLIST (NO TOPO) ---
+    with st.expander("📋 Configuração de Checklist Padrão e Trava de Segurança", expanded=False):
+        st.caption("Cadastre os itens de checklist e defina em quais etapas do Kanban eles são **obrigatórios**.")
         
-        with col_cfg1:
-            st.subheader("1. Conexão Google Sheets")
-            arquivo_credenciais = st.file_uploader("Upload do JSON", type=['json'])
-            url_planilha = st.text_input("Link da Planilha Google Sheets:")
-            if st.button("🔌 Conectar Planilha", use_container_width=True):
-                if arquivo_credenciais and url_planilha:
-                    if conectar_google_sheets(arquivo_credenciais, url_planilha):
-                        st.success("Conectado!")
-                        st.rerun()
+        # Exibe itens existentes
+        for idx, item in enumerate(st.session_state['checklist_padrao']):
+            col_idx, col_nome, col_etapas, col_del = st.columns([0.05, 0.4, 0.45, 0.1])
+            col_idx.write(f"**#{idx+1}**")
+            col_nome.write(f"**{item['nome']}**")
+            
+            etapas_sel = col_etapas.multiselect(
+                "Obrigatório para entrar na(s) etapa(s):",
+                options=LISTA_ETAPAS_NOMES,
+                default=item.get('etapas_obrigatorias', []),
+                key=f"cfg_etapas_{idx}",
+                label_visibility="collapsed"
+            )
+            item['etapas_obrigatorias'] = etapas_sel
 
-        with col_cfg2:
-            st.subheader("2. Checklist Padrão da Instituição")
-            for idx, item in enumerate(list(st.session_state['checklist_padrao'])):
-                c_item, c_del = st.columns([0.85, 0.15])
-                c_item.text(f"• {item}")
-                if c_del.button("❌", key=f"del_chk_{idx}"):
-                    st.session_state['checklist_padrao'].pop(idx)
-                    st.rerun()
-                    
-            novo_item_chk = st.text_input("Novo item padrão:")
-            if st.button("➕ Adicionar Item", use_container_width=True):
-                if novo_item_chk:
-                    st.session_state['checklist_padrao'].append(novo_item_chk)
-                    st.rerun()
-
-    if st.session_state['planilha_ativa'] is None:
-        st.info("👆 Acesse a caixa de configurações acima para conectar a planilha.")
-        return
-
-    # --- BARRA DE FILTROS ---
-    abas_disponiveis = [ws.title for ws in st.session_state['planilha_ativa'].worksheets()]
-    
-    f_col1, f_col2, f_col3, f_col4 = st.columns([2, 2, 2, 2])
-    with f_col1:
-        aba_selecionada = st.selectbox("📅 Data (Aba):", options=abas_disponiveis)
-    
-    if st.session_state['dados_df'] is None or st.session_state.get('aba_atual') != aba_selecionada:
-        carregar_dados_aba(aba_selecionada)
-        st.session_state['aba_atual'] = aba_selecionada
-
-    df = st.session_state['dados_df']
-
-    if df is not None and not df.empty:
-        col_ui = [c for c in df.columns if c.startswith("UI")]
-        setores = ["Todos"] + list(df[col_ui[0]].unique()) if col_ui else ["Todos"]
-        
-        with f_col2:
-            filtro_ui = st.selectbox("Unidade / Setor:", options=setores)
-        with f_col3:
-            filtro_busca = st.text_input("Buscar Nome ou Leito:", placeholder="Ex: 301A ou Maria")
-        with f_col4:
-            st.write(" ")
-            if st.button("🔄 Sincronizar", use_container_width=True):
-                carregar_dados_aba(aba_selecionada)
+            if col_del.button("❌", key=f"del_chk_item_{idx}"):
+                st.session_state['checklist_padrao'].pop(idx)
                 st.rerun()
 
-        df_filtrado = df.copy()
-        if filtro_ui != "Todos" and col_ui:
-            df_filtrado = df_filtrado[df_filtrado[col_ui[0]] == filtro_ui]
-        if filtro_busca:
-            term = filtro_busca.lower()
-            cols_busca = [c for c in df_filtrado.columns if any(k in c for k in ["NOME", "LEITO"])]
-            mascara = False
-            for col in cols_busca:
-                mascara = mascara | df_filtrado[col].astype(str).str.lower().str.contains(term)
-            df_filtrado = df_filtrado[mascara]
-
-        # --- CARDS DE INDICADORES ---
-        st.markdown("<br>", unsafe_allow_html=True)
-        m1, m2, m3, m4 = st.columns(4)
+        st.divider()
+        st.subheader("➕ Adicionar Novo Item ao Checklist")
+        c_add1, c_add2, c_add3 = st.columns([0.45, 0.45, 0.1])
+        novo_nome_item = c_add1.text_input("Descrição do item:", placeholder="Ex: Receituário entregue")
+        novas_etapas_req = c_add2.multiselect("Obrigatório para entrar nas etapas:", options=LISTA_ETAPAS_NOMES)
         
-        total_prev = len(df_filtrado[df_filtrado['ETAPA_KANBAN'] == "Altas Previstas"])
-        total_presc = len(df_filtrado[df_filtrado['ETAPA_KANBAN'] == "Altas Prescritas"])
-        total_pend = len(df_filtrado[df_filtrado['ETAPA_KANBAN'].isin(["Processo de Enfermagem", "Pendência Paciente/Familiar"])])
-        total_realiz = len(df_filtrado[df_filtrado['ETAPA_KANBAN'] == "Alta Realizada"])
+        if c_add3.button("Salvar", use_container_width=True):
+            if novo_nome_item.strip():
+                st.session_state['checklist_padrao'].append({
+                    "nome": novo_nome_item.strip(),
+                    "etapas_obrigatorias": novas_etapas_req
+                })
+                st.rerun()
 
-        m1.markdown(f'<div class="metric-card"><div><div class="metric-label">Altas Previstas</div><div class="metric-value">{total_prev}</div></div><div style="font-size:24px;">📅</div></div>', unsafe_allow_html=True)
-        m2.markdown(f'<div class="metric-card"><div><div class="metric-label">Altas Prescritas</div><div class="metric-value">{total_presc}</div></div><div style="font-size:24px;">📄</div></div>', unsafe_allow_html=True)
-        m3.markdown(f'<div class="metric-card"><div><div class="metric-label">Pendências Críticas</div><div class="metric-value">{total_pend}</div></div><div style="font-size:24px;">⚠️</div></div>', unsafe_allow_html=True)
-        m4.markdown(f'<div class="metric-card"><div><div class="metric-label">Altas Realizadas</div><div class="metric-value">{total_realiz}</div></div><div style="font-size:24px;">✅</div></div>', unsafe_allow_html=True)
+    # Se a planilha não estiver conectada, avisa o usuário
+    if st.session_state['planilha_ativa'] is None:
+        st.warning("⚠️ Planilha não conectada! Por favor, configure a conexão no painel na parte inferior da página.")
 
-        st.markdown("<br>", unsafe_allow_html=True)
+    # --- FILTROS E NAVEGAÇÃO ---
+    if st.session_state['planilha_ativa'] is not None:
+        abas_disponiveis = [ws.title for ws in st.session_state['planilha_ativa'].worksheets()]
+        
+        f_col1, f_col2, f_col3, f_col4 = st.columns([2, 2, 2, 2])
+        with f_col1:
+            aba_selecionada = st.selectbox("📅 Data (Aba):", options=abas_disponiveis)
+        
+        if st.session_state['dados_df'] is None or st.session_state.get('aba_atual') != aba_selecionada:
+            carregar_dados_aba(aba_selecionada)
+            st.session_state['aba_atual'] = aba_selecionada
 
-        # --- QUADRO KANBAN (ENXUTO) ---
-        cols_kanban = st.columns(len(ETAPAS_KANBAN))
+        df = st.session_state['dados_df']
 
-        for idx, cfg in enumerate(ETAPAS_KANBAN):
-            nome_etapa = cfg["nome"]
-            with cols_kanban[idx]:
-                df_col = df_filtrado[df_filtrado['ETAPA_KANBAN'] == nome_etapa]
-                
-                # Cabeçalho da Coluna
-                st.markdown(f"""
-                    <div class="kanban-header" style="background-color: {cfg['cor']}; border-left: 3px solid {cfg['borda']}; color: #1e293b;">
-                        <span>{cfg['icone']} {nome_etapa}</span>
-                        <span style="background: white; padding: 1px 6px; border-radius: 8px; font-size: 11px;">{len(df_col)}</span>
-                    </div>
-                """, unsafe_allow_html=True)
+        if df is not None and not df.empty:
+            col_ui = [c for c in df.columns if c.startswith("UI")]
+            setores = ["Todos"] + list(df[col_ui[0]].unique()) if col_ui else ["Todos"]
+            
+            with f_col2:
+                filtro_ui = st.selectbox("Unidade / Setor:", options=setores)
+            with f_col3:
+                filtro_busca = st.text_input("Buscar Nome ou Leito:", placeholder="Ex: 301A ou Maria")
+            with f_col4:
+                st.write(" ")
+                if st.button("🔄 Sincronizar Dados", use_container_width=True):
+                    carregar_dados_aba(aba_selecionada)
+                    st.rerun()
 
-                # Renderização dos Cards Enxutos
-                for orig_idx, row in df_col.iterrows():
-                    leito = obter_valor_campo(row, 'LEITO', 'N/A')
-                    ui = obter_valor_campo(row, 'UI', 'N/A')
-                    nome = obter_valor_campo(row, 'NOME', 'Sem Nome')
-                    hora_med = obter_valor_campo(row, 'HORA ALTA MÉDICA', '--:--')
-                    hora_hosp = obter_valor_campo(row, 'HORA ALTA HOSPITALAR', '--:--')
-                    status_enf = row.get('STATUS_ENFERMAGEM', 'Sem pendência')
+            df_filtrado = df.copy()
+            if filtro_ui != "Todos" and col_ui:
+                df_filtrado = df_filtrado[df_filtrado[col_ui[0]] == filtro_ui]
+            if filtro_busca:
+                term = filtro_busca.lower()
+                cols_busca = [c for c in df_filtrado.columns if any(k in c for k in ["NOME", "LEITO"])]
+                mascara = False
+                for col in cols_busca:
+                    mascara = mascara | df_filtrado[col].astype(str).str.lower().str.contains(term)
+                df_filtrado = df_filtrado[mascara]
+
+            # --- METRIC CARDS ---
+            st.markdown("<br>", unsafe_allow_html=True)
+            m1, m2, m3, m4 = st.columns(4)
+            
+            total_prev = len(df_filtrado[df_filtrado['ETAPA_KANBAN'] == "Altas Previstas"])
+            total_presc = len(df_filtrado[df_filtrado['ETAPA_KANBAN'] == "Altas Prescritas"])
+            total_pend = len(df_filtrado[df_filtrado['ETAPA_KANBAN'].isin(["Processo de Enfermagem", "Pendência Paciente/Familiar"])])
+            total_realiz = len(df_filtrado[df_filtrado['ETAPA_KANBAN'] == "Alta Realizada"])
+
+            m1.markdown(f'<div class="metric-card"><div><div class="metric-label">Altas Previstas</div><div class="metric-value">{total_prev}</div></div><div style="font-size:24px;">📅</div></div>', unsafe_allow_html=True)
+            m2.markdown(f'<div class="metric-card"><div><div class="metric-label">Altas Prescritas</div><div class="metric-value">{total_presc}</div></div><div style="font-size:24px;">📄</div></div>', unsafe_allow_html=True)
+            m3.markdown(f'<div class="metric-card"><div><div class="metric-label">Pendências Críticas</div><div class="metric-value">{total_pend}</div></div><div style="font-size:24px;">⚠️</div></div>', unsafe_allow_html=True)
+            m4.markdown(f'<div class="metric-card"><div><div class="metric-label">Altas Realizadas</div><div class="metric-value">{total_realiz}</div></div><div style="font-size:24px;">✅</div></div>', unsafe_allow_html=True)
+
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            # --- QUADRO KANBAN ---
+            cols_kanban = st.columns(len(ETAPAS_KANBAN))
+
+            for idx, cfg in enumerate(ETAPAS_KANBAN):
+                nome_etapa = cfg["nome"]
+                with cols_kanban[idx]:
+                    df_col = df_filtrado[df_filtrado['ETAPA_KANBAN'] == nome_etapa]
                     
-                    paciente_key = f"p_{aba_selecionada}_{orig_idx}"
-
-                    # CARD COMPACTO VISÍVEL
                     st.markdown(f"""
-                        <div class="patient-card-compact">
-                            <div class="patient-bed">🛏️ {leito} | {ui}</div>
-                            <div class="patient-name-compact">{nome}</div>
-                            <div class="patient-time-compact"><b>Médica:</b> {hora_med} | <b>Hosp:</b> {hora_hosp}</div>
-                            {f'<div class="badge-status-compact">⚠️ {status_enf}</div>' if nome_etapa == "Processo de Enfermagem" and status_enf != "Sem pendência" else ''}
+                        <div class="kanban-header" style="background-color: {cfg['cor']}; border-left: 3px solid {cfg['borda']}; color: #1e293b;">
+                            <span>{cfg['icone']} {nome_etapa}</span>
+                            <span style="background: white; padding: 1px 6px; border-radius: 8px; font-size: 11px;">{len(df_col)}</span>
                         </div>
                     """, unsafe_allow_html=True)
 
-                    # POPOVER "VER DETALHES" (OCULTA A COMPLEXIDADE)
-                    with st.popover("🔍 Ver detalhes", use_container_width=True):
-                        st.subheader(f"👤 {nome}")
-                        st.caption(f"Leito: {leito} | Unidade: {ui}")
-                        st.write(f"⏱️ **Alta Médica:** {hora_med} | **Alta Hospitalar:** {hora_hosp}")
-                        st.divider()
+                    for orig_idx, row in df_col.iterrows():
+                        leito = obter_valor_campo(row, 'LEITO', 'N/A')
+                        ui = obter_valor_campo(row, 'UI', 'N/A')
+                        nome = obter_valor_campo(row, 'NOME', 'Sem Nome')
+                        hora_med = obter_valor_campo(row, 'HORA ALTA MÉDICA', '--:--')
+                        hora_hosp = obter_valor_campo(row, 'HORA ALTA HOSPITALAR', '--:--')
+                        status_enf = row.get('STATUS_ENFERMAGEM', 'Sem pendência')
+                        
+                        paciente_key = f"p_{aba_selecionada}_{orig_idx}"
 
-                        # 1. Movimentação de Etapa com Registro de Timestamp
-                        st.write("➡️ **Mover Etapa do Paciente:**")
-                        nova_etapa = st.selectbox(
-                            "Selecione a nova etapa:",
-                            options=LISTA_ETAPAS_NOMES,
-                            index=LISTA_ETAPAS_NOMES.index(nome_etapa),
-                            key=f"mov_{paciente_key}"
-                        )
-                        if nova_etapa != nome_etapa:
-                            atualizar_celula_gsheets(aba_selecionada, orig_idx, "ETAPA_KANBAN", nova_etapa)
-                            registrar_evento_log(aba_selecionada, orig_idx, "MUDANCA_ETAPA", f"De '{nome_etapa}' para '{nova_etapa}'")
-                            st.rerun()
+                        # CARD VISÍVEL ENXUTO
+                        st.markdown(f"""
+                            <div class="patient-card-compact">
+                                <div class="patient-bed">🛏️ {leito} | {ui}</div>
+                                <div class="patient-name-compact">{nome}</div>
+                                <div class="patient-time-compact"><b>Médica:</b> {hora_med} | <b>Hosp:</b> {hora_hosp}</div>
+                                {f'<div class="badge-status-compact">⚠️ {status_enf}</div>' if nome_etapa == "Processo de Enfermagem" and status_enf != "Sem pendência" else ''}
+                            </div>
+                        """, unsafe_allow_html=True)
 
-                        # 2. Pendência de Enfermagem (se aplicável)
-                        if nova_etapa == "Processo de Enfermagem":
-                            st.write("🩺 **Pendência de Enfermagem:**")
-                            st_enf = st.selectbox(
-                                "Selecione o status:",
-                                options=STATUS_ENFERMAGEM,
-                                index=STATUS_ENFERMAGEM.index(status_enf) if status_enf in STATUS_ENFERMAGEM else 0,
-                                key=f"enf_{paciente_key}"
+                        # POPOVER DE DETALHES
+                        with st.popover("🔍 Ver detalhes", use_container_width=True):
+                            st.subheader(f"👤 {nome}")
+                            st.caption(f"Leito: {leito} | Unidade: {ui}")
+                            st.write(f"⏱️ **Alta Médica:** {hora_med} | **Alta Hospitalar:** {hora_hosp}")
+                            st.divider()
+
+                            # Carrega estado do Checklist individual
+                            chk_json_str = row.get('CHECKLIST_JSON', '{}')
+                            try:
+                                chk_estado_dict = json.loads(chk_json_str) if chk_json_str else {}
+                            except:
+                                chk_estado_dict = {}
+
+                            # 1. Movimentação de Etapa com Validação de Regras
+                            st.write("➡️ **Mover Etapa do Paciente:**")
+                            nova_etapa = st.selectbox(
+                                "Selecione a nova etapa:",
+                                options=LISTA_ETAPAS_NOMES,
+                                index=LISTA_ETAPAS_NOMES.index(nome_etapa),
+                                key=f"mov_{paciente_key}"
                             )
-                            if st_enf != status_enf:
-                                atualizar_celula_gsheets(aba_selecionada, orig_idx, "STATUS_ENFERMAGEM", st_enf)
-                                registrar_evento_log(aba_selecionada, orig_idx, "STATUS_ENFERMAGEM", f"Status alterado para '{st_enf}'")
+
+                            if nova_etapa != nome_etapa:
+                                # VALIDAÇÃO DOS CHECKS OBRIGATÓRIOS PARA A NOVA ETAPA
+                                pendencias = []
+                                idx_nova = LISTA_ETAPAS_NOMES.index(nova_etapa)
+                                idx_atual = LISTA_ETAPAS_NOMES.index(nome_etapa)
+
+                                # Apenas valida ao avançar de etapa
+                                if idx_nova > idx_atual:
+                                    for item_cfg in st.session_state['checklist_padrao']:
+                                        item_nome = item_cfg['nome']
+                                        etapas_req = item_cfg.get('etapas_obrigatorias', [])
+                                        
+                                        # Verifica se a etapa destino exige este item
+                                        item_exigido = False
+                                        for req in etapas_req:
+                                            if req in LISTA_ETAPAS_NOMES:
+                                                if LISTA_ETAPAS_NOMES.index(req) <= idx_nova:
+                                                    item_exigido = True
+                                                    break
+
+                                        if item_exigido:
+                                            is_checked = chk_estado_dict.get(item_nome, False)
+                                            if not is_checked:
+                                                pendencias.append(f"• **{item_nome}** (exigido para: {', '.join(etapas_req)})")
+
+                                if pendencias:
+                                    st.error(f"🚨 **Ação Bloqueada!** Faltam itens obrigatórios para avançar para '{nova_etapa}':\n\n" + "\n".join(pendencias))
+                                else:
+                                    atualizar_celula_gsheets(aba_selecionada, orig_idx, "ETAPA_KANBAN", nova_etapa)
+                                    registrar_evento_log(aba_selecionada, orig_idx, "MUDANCA_ETAPA", f"De '{nome_etapa}' para '{nova_etapa}'")
+                                    st.rerun()
+
+                            # 2. Status de Enfermagem
+                            if nova_etapa == "Processo de Enfermagem":
+                                st.write("🩺 **Pendência de Enfermagem:**")
+                                st_enf = st.selectbox(
+                                    "Selecione o status:",
+                                    options=STATUS_ENFERMAGEM,
+                                    index=STATUS_ENFERMAGEM.index(status_enf) if status_enf in STATUS_ENFERMAGEM else 0,
+                                    key=f"enf_{paciente_key}"
+                                )
+                                if st_enf != status_enf:
+                                    atualizar_celula_gsheets(aba_selecionada, orig_idx, "STATUS_ENFERMAGEM", st_enf)
+                                    registrar_evento_log(aba_selecionada, orig_idx, "STATUS_ENFERMAGEM", f"Status alterado para '{st_enf}'")
+                                    st.rerun()
+
+                            st.divider()
+
+                            # 3. Checklist com Indicador Visível de Obrigatoriedade
+                            st.write("📋 **Checklist Padronizado de Alta:**")
+                            houve_mudanca_chk = False
+                            
+                            for item_cfg in st.session_state['checklist_padrao']:
+                                item_nome = item_cfg['nome']
+                                etapas_req = item_cfg.get('etapas_obrigatorias', [])
+                                
+                                label_tag = f" 🔒 *(Obrigatório: {', '.join(etapas_req)})*" if etapas_req else ""
+                                val_atual = chk_estado_dict.get(item_nome, False)
+                                
+                                novo_val = st.checkbox(f"{item_nome}{label_tag}", value=val_atual, key=f"chk_{paciente_key}_{item_nome}")
+                                
+                                if novo_val != val_atual:
+                                    chk_estado_dict[item_nome] = novo_val
+                                    houve_mudanca_chk = True
+                                    acao = "Marcado" if novo_val else "Desmarcado"
+                                    registrar_evento_log(aba_selecionada, orig_idx, "CHECKLIST", f"{acao} item: '{item_nome}'")
+
+                            if houve_mudanca_chk:
+                                novo_chk_json = json.dumps(chk_estado_dict, ensure_ascii=False)
+                                atualizar_celula_gsheets(aba_selecionada, orig_idx, "CHECKLIST_JSON", novo_chk_json)
                                 st.rerun()
 
-                        st.divider()
+                            # 4. Histórico de Alterações
+                            with st.expander("📜 Histórico de Alterações (Timestamps)"):
+                                logs_str = row.get('HISTORICO_LOGS', '[]')
+                                try:
+                                    logs_list = json.loads(logs_str) if logs_str else []
+                                except:
+                                    logs_list = []
 
-                        # 3. Checklist Padronizado com Registro de Timestamp
-                        st.write("📋 **Checklist Padronizado de Alta:**")
-                        
-                        # Carrega estado do checklist
-                        chk_json_str = row.get('CHECKLIST_JSON', '{}')
-                        try:
-                            chk_estado_dict = json.loads(chk_json_str) if chk_json_str else {}
-                        except:
-                            chk_estado_dict = {}
+                                if logs_list:
+                                    for lg in reversed(logs_list):
+                                        st.caption(f"🕒 **{lg.get('timestamp')}** - [{lg.get('evento')}]: {lg.get('detalhe')}")
+                                else:
+                                    st.caption("Nenhum histórico registrado ainda.")
 
-                        houve_mudanca_chk = False
-                        for item_padrao in st.session_state['checklist_padrao']:
-                            val_atual = chk_estado_dict.get(item_padrao, False)
-                            novo_val = st.checkbox(item_padrao, value=val_atual, key=f"chk_{paciente_key}_{item_padrao}")
-                            
-                            if novo_val != val_atual:
-                                chk_estado_dict[item_padrao] = novo_val
-                                houve_mudanca_chk = True
-                                acao = "Marcado" if novo_val else "Desmarcado"
-                                registrar_evento_log(aba_selecionada, orig_idx, "CHECKLIST", f"{acao} item: '{item_padrao}'")
+            # --- ABA DE INDICADORES DE TEMPO E LEAD TIME ---
+            st.markdown("<br>---", unsafe_allow_html=True)
+            st.subheader("📈 Indicadores de Tempo & Lead Time")
 
-                        if houve_mudanca_chk:
-                            novo_chk_json = json.dumps(chk_estado_dict, ensure_ascii=False)
-                            atualizar_celula_gsheets(aba_selecionada, orig_idx, "CHECKLIST_JSON", novo_chk_json)
-                            st.rerun()
+            tab_ind1, tab_ind2 = st.tabs(["⏱️ Tempo Médio do Processo", "📊 Gargalos do Dia"])
 
-                        # 4. Linha do Tempo Auditável
-                        with st.expander("📜 Histórico de Alterações (Timestamps)"):
-                            logs_str = row.get('HISTORICO_LOGS', '[]')
-                            try:
-                                logs_list = json.loads(logs_str) if logs_str else []
-                            except:
-                                logs_list = []
+            with tab_ind1:
+                dados_tempo = []
+                for _, r in df_filtrado.iterrows():
+                    logs_raw = r.get('HISTORICO_LOGS', '[]')
+                    try:
+                        l_list = json.loads(logs_raw) if logs_raw else []
+                    except:
+                        l_list = []
+                    
+                    t_inicio = None
+                    t_fim = None
+                    for lg in l_list:
+                        if lg.get('evento') == 'MUDANCA_ETAPA':
+                            if not t_inicio:
+                                t_inicio = datetime.strptime(lg.get('timestamp'), "%Y-%m-%d %H:%M:%S")
+                            if "Alta Realizada" in lg.get('detalhe', ''):
+                                t_fim = datetime.strptime(lg.get('timestamp'), "%Y-%m-%d %H:%M:%S")
 
-                            if logs_list:
-                                for lg in reversed(logs_list):
-                                    st.caption(f"🕒 **{lg.get('timestamp')}** - [{lg.get('evento')}]: {lg.get('detalhe')}")
-                            else:
-                                st.caption("Nenhum histórico registrado ainda.")
+                    if t_inicio and t_fim:
+                        duracao_min = (t_fim - t_inicio).total_seconds() / 60.0
+                        dados_tempo.append({"Paciente": r.get('NOME', 'Sem nome'), "Duracao_Minutos": duracao_min})
 
-        # ==========================================
-        # ABA DE INDICADORES & LEAD TIME
-        # ==========================================
-        st.markdown("<br>---", unsafe_allow_html=True)
-        st.subheader("📈 Indicadores de Tempo & Lead Time da Alta")
-
-        tab_ind1, tab_ind2 = st.tabs(["⏱️ Tempo de Processo", "📊 Gargalos do Dia"])
-
-        with tab_ind1:
-            # Análise do tempo médio de transição baseado nos logs
-            dados_tempo = []
-            for _, r in df_filtrado.iterrows():
-                logs_raw = r.get('HISTORICO_LOGS', '[]')
-                try:
-                    l_list = json.loads(logs_raw) if logs_raw else []
-                except:
-                    l_list = []
-                
-                # Procura evento inicial e final
-                t_inicio = None
-                t_fim = None
-                for lg in l_list:
-                    if lg.get('evento') == 'MUDANCA_ETAPA':
-                        if not t_inicio:
-                            t_inicio = datetime.strptime(lg.get('timestamp'), "%Y-%m-%d %H:%M:%S")
-                        if "Alta Realizada" in lg.get('detalhe', ''):
-                            t_fim = datetime.strptime(lg.get('timestamp'), "%Y-%m-%d %H:%M:%S")
-
-                if t_inicio and t_fim:
-                    duracao_min = (t_fim - t_inicio).total_seconds() / 60.0
-                    dados_tempo.append({"Paciente": r.get('NOME', 'Sem nome'), "Duracao_Minutos": duracao_min})
-
-            if dados_tempo:
-                df_tempos = pd.DataFrame(dados_tempo)
-                media_minutos = df_tempos['Duracao_Minutos'].mean()
-                
-                col_t1, col_t2 = st.columns(2)
-                col_t1.metric("Tempo Médio de Processo (Início -> Alta Realizada)", f"{int(media_minutos)} min")
-                
-                fig_hist = px.histogram(df_tempos, x="Duracao_Minutos", nbins=10, title="Distribuição do Tempo de Alta (Minutos)")
-                col_t2.plotly_chart(fig_hist, use_container_width=True)
-            else:
-                st.info("ℹ️ Os tempos médios serão calculados à medida que as movimentações de etapas forem registradas e finalizadas como 'Alta Realizada'.")
-
-        with tab_ind2:
-            g1, g2 = st.columns(2)
-            with g1:
-                chart_data = df_filtrado['ETAPA_KANBAN'].value_counts().reset_index()
-                chart_data.columns = ['Etapa', 'Pacientes']
-                fig = px.bar(chart_data, x='Etapa', y='Pacientes', color='Etapa', text_auto=True, title="Pacientes por Etapa")
-                fig.update_layout(showlegend=False, height=280)
-                st.plotly_chart(fig, use_container_width=True)
-
-            with g2:
-                df_enf = df_filtrado[df_filtrado['ETAPA_KANBAN'] == "Processo de Enfermagem"]
-                if not df_enf.empty:
-                    chart_enf = df_enf['STATUS_ENFERMAGEM'].value_counts().reset_index()
-                    chart_enf.columns = ['Pendência', 'Qtd']
-                    fig_enf = px.pie(chart_enf, names='Pendência', values='Qtd', hole=0.4, title="Gargalos de Enfermagem")
-                    fig_enf.update_layout(height=280)
-                    st.plotly_chart(fig_enf, use_container_width=True)
+                if dados_tempo:
+                    df_tempos = pd.DataFrame(dados_tempo)
+                    media_minutos = df_tempos['Duracao_Minutos'].mean()
+                    
+                    col_t1, col_t2 = st.columns(2)
+                    col_t1.metric("Tempo Médio de Processo (Abertura -> Finalização)", f"{int(media_minutos)} min")
+                    
+                    fig_hist = px.histogram(df_tempos, x="Duracao_Minutos", nbins=10, title="Distribuição do Tempo de Alta (Minutos)")
+                    col_t2.plotly_chart(fig_hist, use_container_width=True)
                 else:
-                    st.info("Nenhuma pendência mapeada na Enfermagem no momento.")
+                    st.info("ℹ️ Os tempos médios serão exibidos conforme as movimentações de etapas forem finalizadas como 'Alta Realizada'.")
+
+            with tab_ind2:
+                g1, g2 = st.columns(2)
+                with g1:
+                    chart_data = df_filtrado['ETAPA_KANBAN'].value_counts().reset_index()
+                    chart_data.columns = ['Etapa', 'Pacientes']
+                    fig = px.bar(chart_data, x='Etapa', y='Pacientes', color='Etapa', text_auto=True, title="Pacientes por Etapa")
+                    fig.update_layout(showlegend=False, height=280)
+                    st.plotly_chart(fig, use_container_width=True)
+
+                with g2:
+                    df_enf = df_filtrado[df_filtrado['ETAPA_KANBAN'] == "Processo de Enfermagem"]
+                    if not df_enf.empty:
+                        chart_enf = df_enf['STATUS_ENFERMAGEM'].value_counts().reset_index()
+                        chart_enf.columns = ['Pendência', 'Qtd']
+                        fig_enf = px.pie(chart_enf, names='Pendência', values='Qtd', hole=0.4, title="Gargalos na Enfermagem")
+                        fig_enf.update_layout(height=280)
+                        st.plotly_chart(fig_enf, use_container_width=True)
+                    else:
+                        st.info("Nenhuma pendência mapeada na Enfermagem no momento.")
+
+    # ==========================================
+    # SEÇÃO DE CONEXÃO COM GOOGLE SHEETS (RODAPÉ/OCULTO)
+    # ==========================================
+    st.markdown("<br><br>---", unsafe_allow_html=True)
+    with st.expander("🔌 Conexão e Configuração do Google Sheets (Avançado)", expanded=(st.session_state['planilha_ativa'] is None)):
+        st.caption("Painel administrativo para autenticação e conexão com a base de dados.")
+        
+        col_conn1, col_conn2 = st.columns(2)
+        with col_conn1:
+            arquivo_credenciais = st.file_uploader("Upload do arquivo JSON de Credenciais", type=['json'])
+        with col_conn2:
+            url_planilha = st.text_input("Link / URL da Planilha Google Sheets:")
+
+        if st.button("🔌 Conectar e Salvar Conexão", use_container_width=True):
+            if arquivo_credenciais and url_planilha:
+                if conectar_google_sheets(arquivo_credenciais, url_planilha):
+                    st.success("Conectado com sucesso ao Google Sheets!")
+                    st.rerun()
+            else:
+                st.warning("Envie o arquivo de credenciais JSON e o link da planilha.")
 
 if __name__ == "__main__":
     main()
