@@ -88,25 +88,26 @@ st.markdown("""
         box-sizing: border-box;
     }
 
-    /* FORÇA O FUNDO BRANCO EM TODO O CARD DO PACIENTE E SEUS FILHOS */
-    div[data-testid="stVerticalBlockBorderWrapper"]:has(.patient-card-box),
-    div[data-testid="stVerticalBlockBorderWrapper"]:has(.patient-card-box) *,
-    div[data-testid="stVerticalBlockBorderWrapper"]:has(.patient-card-box) [data-testid="stVerticalBlock"] {
+    /* CONTAINER NATIVO DO STREAMLIT COM FUNDO BRANCO INTEGRAL */
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.patient-card-box) {
         background-color: #ffffff !important;
+        border-radius: 12px !important;
+        border: 1px solid #e2e8f0 !important;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.03) !important;
+        padding: 12px !important;
+        margin-bottom: 12px !important;
     }
 
-    div[data-testid="stVerticalBlockBorderWrapper"]:has(.patient-card-box) {
-        border-radius: 14px !important;
-        border: 1px solid #e2e8f0 !important;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.03) !important;
-        padding: 8px !important;
-        margin-bottom: 10px !important;
+    /* REMOVE O FUNDO E O PADDING DAS DIVS INTERNAS DO STREAMLIT */
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.patient-card-box) > div,
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.patient-card-box) [data-testid="stVerticalBlock"] {
+        background-color: transparent !important;
+        padding: 0 !important;
     }
 
     .patient-card-box {
-        background-color: #ffffff !important;
-        padding: 4px;
-        border-radius: 8px;
+        background-color: transparent !important;
+        padding: 0 !important;
     }
 
     .patient-bed { font-size: 12px; font-weight: 600; color: #64748b; }
@@ -120,7 +121,7 @@ st.markdown("""
     /* BOTÃO "VER DETALHES" SUTIL DENTRO DO CARD */
     div[data-testid="stVerticalBlockBorderWrapper"]:has(.patient-card-box) div[data-testid="stPopover"] {
         width: 100%;
-        margin-top: 4px;
+        margin-top: 6px;
     }
     div[data-testid="stVerticalBlockBorderWrapper"]:has(.patient-card-box) div[data-testid="stPopover"] > button {
         width: 100% !important;
@@ -432,7 +433,7 @@ def main():
                         
                         paciente_key = f"p_{aba_selecionada}_{orig_idx}"
 
-                        # CARD UNIFICADO DO PACIENTE (COM DIV IDENTIFICADORA DE FUNDO BRANCO)
+                        # CARD UNIFICADO DO PACIENTE (UTILIZANDO A CLASSE PARA FORÇAR O FUNDO BRANCO INTEGRAL NO CONTAINER)
                         with st.container(border=True):
                             st.markdown(f"""
                                 <div class="patient-card-box">
@@ -461,7 +462,7 @@ def main():
                                     chk_estado_dict = {}
 
                                 # 1. Movimentação de Etapa
-                                st.write("➡️ **Mover Etapa do Paciente:**")
+                                st.write("➡️️ **Mover Etapa do Paciente:**")
                                 nova_etapa = st.selectbox(
                                     "Selecione a nova etapa:",
                                     options=LISTA_ETAPAS_NOMES,
@@ -556,7 +557,7 @@ def main():
             st.markdown("<br>---", unsafe_allow_html=True)
             st.subheader("📈 Indicadores de Tempo & Lead Time")
 
-            tab_ind1, tab_ind2 = st.tabs(["⏱️ Tempo Médio do Processo", "📊 Gargalos do Dia"])
+            tab_ind1, tab_ind2 = st.tabs(["⏱️️ Tempo Médio do Processo", "📊 Gargalos do Dia"])
 
             with tab_ind1:
                 dados_tempo = []
