@@ -66,7 +66,7 @@ st.markdown("""
     .metric-value { font-size: 22px; font-weight: 700; color: #0f172a; }
     .metric-label { font-size: 11px; font-weight: 600; color: #64748b; }
 
-    /* SEPARAÇÃO VISUAL E FUNDO SUAVE PARA CADA COLUNA DO KANBAN */
+    /* SEPARAÇÃO VISUAL DAS COLUNAS DO KANBAN */
     div[data-testid="stColumn"]:has(.kanban-header) {
         background-color: #f1f5f9;
         border: 1px solid #e2e8f0;
@@ -74,7 +74,7 @@ st.markdown("""
         padding: 10px 8px !important;
     }
 
-    /* CABEÇALHO COM ALTURA PADRONIZADA IGUAL PARA TODAS AS COLUNAS */
+    /* CABEÇALHO COM ALTURA PADRONIZADA */
     .kanban-header {
         padding: 6px 10px;
         border-radius: 8px;
@@ -88,17 +88,49 @@ st.markdown("""
         box-sizing: border-box;
     }
 
-    .patient-card-compact {
-        background-color: #ffffff; border-radius: 8px; padding: 10px 12px;
-        margin-bottom: 8px; border: 1px solid #cbd5e1;
+    /* CONTAINER INTEGRADO DO PACIENTE (CARD + BOTAO DE DETALHES) */
+    .patient-container-wrapper {
+        background-color: #ffffff;
+        border-radius: 8px;
+        border: 1px solid #cbd5e1;
         box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+        margin-bottom: 10px;
+        overflow: hidden;
     }
+
+    .patient-card-compact {
+        padding: 10px 12px 4px 12px;
+    }
+
     .patient-bed { font-size: 11px; font-weight: 800; color: #2563eb; text-transform: uppercase; }
     .patient-name-compact { font-size: 13px; font-weight: 700; color: #0f172a; margin: 2px 0; }
-    .patient-time-compact { font-size: 10px; color: #64748b; margin-bottom: 6px; }
+    .patient-time-compact { font-size: 10px; color: #64748b; margin-bottom: 4px; }
     .badge-status-compact {
         background-color: #fef3c7; color: #92400e; font-size: 9px;
         font-weight: 700; padding: 2px 6px; border-radius: 4px; display: inline-block; margin-bottom: 4px;
+    }
+
+    /* FORMATAÇÃO DO BOTÃO POPOVER "Ver detalhes" INTEGRADINHO AO CARD */
+    div[data-testid="stPopover"] {
+        width: 100%;
+    }
+    div[data-testid="stPopover"] > button {
+        width: 100% !important;
+        background-color: #f8fafc !important;
+        border: none !important;
+        border-top: 1px solid #f1f5f9 !important;
+        border-radius: 0 0 8px 8px !important;
+        color: #64748b !important;
+        font-size: 11px !important;
+        font-weight: 600 !important;
+        padding: 4px 8px !important;
+        min-height: 28px !important;
+        height: 28px !important;
+        box-shadow: none !important;
+    }
+    div[data-testid="stPopover"] > button:hover {
+        background-color: #e2e8f0 !important;
+        color: #0f172a !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -363,7 +395,7 @@ def main():
 
             st.markdown("<br>", unsafe_allow_html=True)
 
-            # --- QUADRO KANBAN REFORMULADO ---
+            # --- QUADRO KANBAN ---
             cols_kanban = st.columns(len(ETAPAS_KANBAN))
 
             for idx, cfg in enumerate(ETAPAS_KANBAN):
@@ -371,7 +403,6 @@ def main():
                 with cols_kanban[idx]:
                     df_col = df_filtrado[df_filtrado['ETAPA_KANBAN'] == nome_etapa]
                     
-                    # CABEÇALHO DA COLUNA COM ALTURA FIXA E FORMATO PADRONIZADO
                     st.markdown(f"""
                         <div class="kanban-header" style="background-color: {cfg['cor']}; border-left: 4px solid {cfg['borda']};">
                             <div style="display: flex; align-items: center; gap: 6px; line-height: 1.25; font-size: 11px; font-weight: 700; color: #1e293b;">
@@ -394,7 +425,8 @@ def main():
                         
                         paciente_key = f"p_{aba_selecionada}_{orig_idx}"
 
-                        # CARD VISÍVEL ENXUTO
+                        # CARD INTEGRADO (INÍCIO DA CAIXA ÚNICA)
+                        st.markdown('<div class="patient-container-wrapper">', unsafe_allow_html=True)
                         st.markdown(f"""
                             <div class="patient-card-compact">
                                 <div class="patient-bed">🛏️ {leito} | {ui}</div>
@@ -404,8 +436,8 @@ def main():
                             </div>
                         """, unsafe_allow_html=True)
 
-                        # POPOVER DE DETALHES
-                        with st.popover("🔍 Ver detalhes", use_container_width=True):
+                        # POPOVER INTEGRADO AO QUADRO DO PACIENTE
+                        with st.popover("Ver detalhes", use_container_width=True):
                             st.subheader(f"👤 {nome}")
                             st.caption(f"Leito: {leito} | Unidade: {ui}")
                             st.write(f"⏱️ **Alta Médica:** {hora_med} | **Alta Hospitalar:** {hora_hosp}")
@@ -417,7 +449,7 @@ def main():
                             except:
                                 chk_estado_dict = {}
 
-                            # 1. Movimentação de Etapa com Validação
+                            # 1. Movimentação de Etapa
                             st.write("➡️ **Mover Etapa do Paciente:**")
                             nova_etapa = st.selectbox(
                                 "Selecione a nova etapa:",
@@ -509,6 +541,9 @@ def main():
                                 else:
                                     st.caption("Nenhum histórico registrado ainda.")
 
+                        # FIM DO CONTAINER INTEGRADO
+                        st.markdown('</div>', unsafe_allow_html=True)
+
             # --- INDICADORES DE TEMPO E LEAD TIME ---
             st.markdown("<br>---", unsafe_allow_html=True)
             st.subheader("📈 Indicadores de Tempo & Lead Time")
@@ -547,7 +582,7 @@ def main():
                     fig_hist = px.histogram(df_tempos, x="Duracao_Minutos", nbins=10, title="Distribuição do Tempo de Alta (Minutos)")
                     col_t2.plotly_chart(fig_hist, use_container_width=True)
                 else:
-                    st.info("ℹ️ Os tempos médios serão exibidos conforme as movimentações de etapas forem finalizadas como 'Alta Realizada'.")
+                    st.info("ℹ️️ Os tempos médios serão exibidos conforme as movimentações de etapas forem finalizadas como 'Alta Realizada'.")
 
             with tab_ind2:
                 g1, g2 = st.columns(2)
