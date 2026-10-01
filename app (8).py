@@ -74,7 +74,7 @@ st.markdown("""
         padding: 10px 8px !important;
     }
 
-    /* CABEÇALHO COM ALTURA PADRONIZADA */
+    /* CABEÇALHO DO KANBAN */
     .kanban-header {
         padding: 6px 10px;
         border-radius: 8px;
@@ -88,48 +88,45 @@ st.markdown("""
         box-sizing: border-box;
     }
 
-    /* CONTAINER INTEGRADO DO PACIENTE (CARD + BOTAO DE DETALHES) */
-    .patient-container-wrapper {
+    /* CARD COMPLETO E UNIFICADO DO PACIENTE */
+    .patient-card-wrapper {
         background-color: #ffffff;
-        border-radius: 8px;
-        border: 1px solid #cbd5e1;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+        border-radius: 12px;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+        padding: 12px;
         margin-bottom: 10px;
-        overflow: hidden;
-    }
-
-    .patient-card-compact {
-        padding: 10px 12px 4px 12px;
     }
 
     .patient-bed { font-size: 11px; font-weight: 800; color: #2563eb; text-transform: uppercase; }
-    .patient-name-compact { font-size: 13px; font-weight: 700; color: #0f172a; margin: 2px 0; }
-    .patient-time-compact { font-size: 10px; color: #64748b; margin-bottom: 4px; }
+    .patient-name-compact { font-size: 13px; font-weight: 700; color: #0f172a; margin: 4px 0; }
+    .patient-time-compact { font-size: 11px; color: #64748b; margin-bottom: 6px; }
     .badge-status-compact {
-        background-color: #fef3c7; color: #92400e; font-size: 9px;
-        font-weight: 700; padding: 2px 6px; border-radius: 4px; display: inline-block; margin-bottom: 4px;
+        background-color: #fef3c7; color: #92400e; font-size: 10px;
+        font-weight: 700; padding: 2px 8px; border-radius: 4px; display: inline-block; margin-bottom: 8px;
     }
 
-    /* FORMATAÇÃO DO BOTÃO POPOVER "Ver detalhes" INTEGRADINHO AO CARD */
-    div[data-testid="stPopover"] {
+    /* BOTAO SUTIL "VER DETALHES" DENTRO DO CARD */
+    .patient-card-wrapper div[data-testid="stPopover"] {
         width: 100%;
+        margin-top: 6px;
     }
-    div[data-testid="stPopover"] > button {
+    .patient-card-wrapper div[data-testid="stPopover"] > button {
         width: 100% !important;
-        background-color: #f8fafc !important;
-        border: none !important;
-        border-top: 1px solid #f1f5f9 !important;
-        border-radius: 0 0 8px 8px !important;
-        color: #64748b !important;
-        font-size: 11px !important;
+        background-color: #ffffff !important;
+        border: 1px solid #e2e8f0 !important;
+        border-radius: 8px !important;
+        color: #334155 !important;
+        font-size: 12px !important;
         font-weight: 600 !important;
-        padding: 4px 8px !important;
-        min-height: 28px !important;
-        height: 28px !important;
-        box-shadow: none !important;
+        padding: 4px 10px !important;
+        min-height: 32px !important;
+        height: 32px !important;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.02) !important;
     }
-    div[data-testid="stPopover"] > button:hover {
-        background-color: #e2e8f0 !important;
+    .patient-card-wrapper div[data-testid="stPopover"] > button:hover {
+        background-color: #f8fafc !important;
+        border-color: #cbd5e1 !important;
         color: #0f172a !important;
     }
     </style>
@@ -301,7 +298,7 @@ def main():
         </div>
     """, unsafe_allow_html=True)
 
-    # --- GERENCIAMENTO DE CHECKLIST (NO TOPO) ---
+    # --- GERENCIAMENTO DE CHECKLIST ---
     with st.expander("📋 Configuração de Checklist Padrão e Trava de Segurança", expanded=False):
         st.caption("Cadastre os itens de checklist e defina em quais etapas do Kanban eles são **obrigatórios**.")
         
@@ -425,18 +422,16 @@ def main():
                         
                         paciente_key = f"p_{aba_selecionada}_{orig_idx}"
 
-                        # CARD INTEGRADO (INÍCIO DA CAIXA ÚNICA)
-                        st.markdown('<div class="patient-container-wrapper">', unsafe_allow_html=True)
+                        # CARD UNIFICADO DO PACIENTE (REFERÊNCIA DA IMAGEM)
+                        st.markdown('<div class="patient-card-wrapper">', unsafe_allow_html=True)
                         st.markdown(f"""
-                            <div class="patient-card-compact">
-                                <div class="patient-bed">🛏️ {leito} | {ui}</div>
-                                <div class="patient-name-compact">{nome}</div>
-                                <div class="patient-time-compact"><b>Médica:</b> {hora_med} | <b>Hosp:</b> {hora_hosp}</div>
-                                {f'<div class="badge-status-compact">⚠️ {status_enf}</div>' if nome_etapa == "Processo de Enfermagem" and status_enf != "Sem pendência" else ''}
-                            </div>
+                            <div class="patient-bed">🛏️ Leito {leito} | {ui}</div>
+                            <div class="patient-name-compact">{nome}</div>
+                            <div class="patient-time-compact">🕒 <b>Médica:</b> {hora_med} | <b>Hosp:</b> {hora_hosp}</div>
+                            {f'<div class="badge-status-compact">⚠️ {status_enf}</div>' if nome_etapa == "Processo de Enfermagem" and status_enf != "Sem pendência" else ''}
                         """, unsafe_allow_html=True)
 
-                        # POPOVER INTEGRADO AO QUADRO DO PACIENTE
+                        # BOTÃO SUTIL "VER DETALHES" DENTRO DO CARD
                         with st.popover("Ver detalhes", use_container_width=True):
                             st.subheader(f"👤 {nome}")
                             st.caption(f"Leito: {leito} | Unidade: {ui}")
@@ -541,7 +536,7 @@ def main():
                                 else:
                                     st.caption("Nenhum histórico registrado ainda.")
 
-                        # FIM DO CONTAINER INTEGRADO
+                        # FECHAMENTO DO CARD UNIFICADO
                         st.markdown('</div>', unsafe_allow_html=True)
 
             # --- INDICADORES DE TEMPO E LEAD TIME ---
@@ -582,7 +577,7 @@ def main():
                     fig_hist = px.histogram(df_tempos, x="Duracao_Minutos", nbins=10, title="Distribuição do Tempo de Alta (Minutos)")
                     col_t2.plotly_chart(fig_hist, use_container_width=True)
                 else:
-                    st.info("ℹ️️ Os tempos médios serão exibidos conforme as movimentações de etapas forem finalizadas como 'Alta Realizada'.")
+                    st.info("ℹ Os tempos médios serão exibidos conforme as movimentações de etapas forem finalizadas como 'Alta Realizada'.")
 
             with tab_ind2:
                 g1, g2 = st.columns(2)
