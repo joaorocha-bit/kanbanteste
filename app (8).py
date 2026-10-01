@@ -88,36 +88,41 @@ st.markdown("""
         box-sizing: border-box;
     }
 
-    /* CARD DO PACIENTE COM FUNDO 100% BRANCO */
-    div[data-testid="stVerticalBlockBorderWrapper"]:has(.patient-name-compact),
-    div[data-testid="stVerticalBlockBorderWrapper"]:has(.patient-name-compact) > div {
+    /* FORÇA O FUNDO BRANCO EM TODO O CARD DO PACIENTE E SEUS FILHOS */
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.patient-card-box),
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.patient-card-box) *,
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.patient-card-box) [data-testid="stVerticalBlock"] {
         background-color: #ffffff !important;
+    }
+
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.patient-card-box) {
         border-radius: 14px !important;
         border: 1px solid #e2e8f0 !important;
         box-shadow: 0 2px 6px rgba(0,0,0,0.03) !important;
-        padding: 12px !important;
+        padding: 8px !important;
         margin-bottom: 10px !important;
     }
 
-    div[data-testid="stVerticalBlockBorderWrapper"]:has(.patient-name-compact) [data-testid="stVerticalBlock"] {
-        gap: 0.3rem !important;
+    .patient-card-box {
         background-color: #ffffff !important;
+        padding: 4px;
+        border-radius: 8px;
     }
 
     .patient-bed { font-size: 12px; font-weight: 600; color: #64748b; }
     .patient-name-compact { font-size: 15px; font-weight: 800; color: #0f172a; margin: 2px 0 4px 0; text-transform: uppercase; }
     .patient-time-compact { font-size: 12px; color: #475569; display: flex; gap: 6px; align-items: center; margin-bottom: 4px; }
     .badge-status-compact {
-        background-color: #fef3c7; color: #92400e; font-size: 11px;
+        background-color: #fef3c7 !important; color: #92400e; font-size: 11px;
         font-weight: 700; padding: 3px 8px; border-radius: 12px; display: inline-block; margin-bottom: 6px;
     }
 
     /* BOTÃO "VER DETALHES" SUTIL DENTRO DO CARD */
-    div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stPopover"] {
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.patient-card-box) div[data-testid="stPopover"] {
         width: 100%;
         margin-top: 4px;
     }
-    div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stPopover"] > button {
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.patient-card-box) div[data-testid="stPopover"] > button {
         width: 100% !important;
         background-color: #ffffff !important;
         border: 1px solid #cbd5e1 !important;
@@ -130,7 +135,7 @@ st.markdown("""
         box-shadow: 0 1px 2px rgba(0,0,0,0.02) !important;
         transition: all 0.2s ease;
     }
-    div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stPopover"] > button:hover {
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.patient-card-box) div[data-testid="stPopover"] > button:hover {
         background-color: #f8fafc !important;
         border-color: #94a3b8 !important;
     }
@@ -427,17 +432,19 @@ def main():
                         
                         paciente_key = f"p_{aba_selecionada}_{orig_idx}"
 
-                        # CARD UNIFICADO DO PACIENTE (COM FUNDO BRANCO INTEGRAL)
+                        # CARD UNIFICADO DO PACIENTE (COM DIV IDENTIFICADORA DE FUNDO BRANCO)
                         with st.container(border=True):
                             st.markdown(f"""
-                                <div class="patient-bed">Leito {leito} &nbsp;|&nbsp; {ui}</div>
-                                <div class="patient-name-compact">{nome}</div>
-                                <div class="patient-time-compact">
-                                    <span>⏱ <b>Médica:</b> {hora_med}</span>
-                                    <span>|</span>
-                                    <span><b>Hosp:</b> {hora_hosp}</span>
+                                <div class="patient-card-box">
+                                    <div class="patient-bed">Leito {leito} &nbsp;|&nbsp; {ui}</div>
+                                    <div class="patient-name-compact">{nome}</div>
+                                    <div class="patient-time-compact">
+                                        <span>⏱ <b>Médica:</b> {hora_med}</span>
+                                        <span>|</span>
+                                        <span><b>Hosp:</b> {hora_hosp}</span>
+                                    </div>
+                                    {f'<div class="badge-status-compact">⚠️ {status_enf}</div>' if nome_etapa == "Processo de Enfermagem" and status_enf != "Sem pendência" else ''}
                                 </div>
-                                {f'<div class="badge-status-compact">⚠️ {status_enf}</div>' if nome_etapa == "Processo de Enfermagem" and status_enf != "Sem pendência" else ''}
                             """, unsafe_allow_html=True)
 
                             # BOTÃO "VER DETALHES"
