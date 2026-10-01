@@ -1,1 +1,1 @@
-pip install streamlit pandas openpyxl plotly
+pip install streamlit pandas gspread google-auth plotly
