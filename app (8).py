@@ -1,7 +1,9 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from io import BytesIO
+import gspread
+from google.oauth2.service_account import Credentials
+import json
 
 # ==========================================
 # CONFIGURAÇÃO INICIAL DA PÁGINA
@@ -27,23 +29,22 @@ ETAPAS_KANBAN = [
 ]
 
 STATUS_ENFERMAGEM = [
-    "Sem pendência",
-    "Ag medicação", 
-    "Ag transfusão", 
-    "Paciente com dor", 
-    "Ag exame", 
-    "Aguarda retirada de cateter", 
-    "Ag avaliação médica", 
-    "Ag. Fisioterapia", 
-    "Ag Curativo", 
-    "Ag orientações de enfermagem", 
+    "Sem pendência", "Ag medicação", "Ag transfusão", "Paciente com dor", 
+    "Ag exame", "Aguarda retirada de cateter", "Ag avaliação médica", 
+    "Ag. Fisioterapia", "Ag Curativo", "Ag orientações de enfermagem", 
     "Ag plano educacional"
 ]
 
 COLUNAS_ESPERADAS = ["LEITO", "UI", "NOME", "HORA ALTA MÉDICA", "HORA ALTA HOSPITALAR"]
 
+# Escopos necessários para a API do Google
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive"
+]
+
 # ==========================================
-# ESTILIZAÇÃO CSS CUSTOMIZADA (Cards e Kanban)
+# ESTILIZAÇÃO CSS CUSTOMIZADA
 # ==========================================
 st.markdown("""
     <style>
@@ -53,80 +54,108 @@ st.markdown("""
         padding: 15px;
         margin-bottom: 15px;
         box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        border-left: 5px solid #0052cc;
+        border-left: 5px solid #00a65a;
         color: #333;
     }
-    .kanban-title {
-        font-size: 16px;
-        font-weight: bold;
-        margin-bottom: 5px;
-        color: #1f1f1f;
-    }
-    .kanban-info {
-        font-size: 12px;
-        margin: 2px 0;
-        color: #555;
-    }
+    .kanban-title { font-size: 16px; font-weight: bold; margin-bottom: 5px; color: #1f1f1f; }
+    .kanban-info { font-size: 12px; margin: 2px 0; color: #555; }
     .kanban-column-header {
-        text-align: center;
-        padding: 10px;
-        background-color: #e3e8ee;
-        border-radius: 5px;
-        font-weight: bold;
-        margin-bottom: 10px;
-        color: #333;
+        text-align: center; padding: 10px; background-color: #e3e8ee;
+        border-radius: 5px; font-weight: bold; margin-bottom: 10px; color: #333;
     }
     </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# FUNÇÕES DE ESTADO E PROCESSAMENTO
+# FUNÇÕES DE INTEGRAÇÃO COM GOOGLE SHEETS
 # ==========================================
 def inicializar_estado():
-    """Inicializa variáveis na sessão do Streamlit."""
-    if 'dados_excel' not in st.session_state:
-        st.session_state['dados_excel'] = None  # Guardará dicionário de abas -> DataFrames
-    if 'abas_disponiveis' not in st.session_state:
-        st.session_state['abas_disponiveis'] = []
+    if 'client_gsheets' not in st.session_state:
+        st.session_state['client_gsheets'] = None
+    if 'planilha_ativa' not in st.session_state:
+        st.session_state['planilha_ativa'] = None
+    if 'dados_df' not in st.session_state:
+        st.session_state['dados_df'] = None
     if 'checklists' not in st.session_state:
-        st.session_state['checklists'] = {} # Formato: { 'Nome_Paciente': ['item1', 'item2'] }
+        st.session_state['checklists'] = {}
 
-def carregar_planilha(arquivo):
-    """Lê a planilha Excel e carrega as abas."""
+def conectar_google_sheets(arquivo_credenciais, url_planilha):
+    """Autentica no Google Sheets usando o JSON e abre a planilha pelo URL."""
     try:
-        # Lê todas as abas do Excel
-        xls = pd.read_excel(arquivo, sheet_name=None)
-        st.session_state['dados_excel'] = xls
-        st.session_state['abas_disponiveis'] = list(xls.keys())
+        credenciais_dict = json.load(arquivo_credenciais)
+        credentials = Credentials.from_service_account_info(credenciais_dict, scopes=SCOPES)
+        client = gspread.authorize(credentials)
         
-        # Garante que todas as planilhas tenham as colunas necessárias de estado
-        for aba, df in xls.items():
-            if 'ETAPA_KANBAN' not in df.columns:
-                df['ETAPA_KANBAN'] = ETAPAS_KANBAN[0] # Começa em Altas Previstas
-            if 'STATUS_ENFERMAGEM' not in df.columns:
-                df['STATUS_ENFERMAGEM'] = STATUS_ENFERMAGEM[0]
-            # Formata datas caso existam
-            df.columns = [str(c).strip().upper() for c in df.columns]
-            
-        st.success("Planilha carregada com sucesso!")
+        planilha = client.open_by_url(url_planilha)
+        st.session_state['client_gsheets'] = client
+        st.session_state['planilha_ativa'] = planilha
+        st.success("Conectado ao Google Sheets com sucesso!")
+        return True
     except Exception as e:
-        st.error(f"Erro ao carregar o arquivo Excel: {e}")
+        st.error(f"Erro ao conectar: {e}")
+        return False
 
-def gerar_excel_download():
-    """Gera um arquivo Excel em memória para download a partir do estado atual."""
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        for aba, df in st.session_state['dados_excel'].items():
-            df.to_excel(writer, index=False, sheet_name=aba)
-    return output.getvalue()
+def carregar_dados_aba(aba_nome):
+    """Lê os dados da aba selecionada e garante as colunas de controle."""
+    planilha = st.session_state['planilha_ativa']
+    ws = planilha.worksheet(aba_nome)
+    
+    # Pega todos os registros. Retorna lista de dicionários
+    registros = ws.get_all_records()
+    df = pd.DataFrame(registros)
+    
+    if df.empty:
+        st.warning(f"A aba '{aba_nome}' está vazia ou sem cabeçalhos.")
+        st.session_state['dados_df'] = df
+        return
 
-def mudar_etapa(aba, index_linha, nova_etapa):
-    """Atualiza a etapa do paciente no dataframe."""
-    st.session_state['dados_excel'][aba].at[index_linha, 'ETAPA_KANBAN'] = nova_etapa
+    # Garante que as colunas de status existam na planilha na nuvem
+    cabecalhos = ws.row_values(1)
+    precisa_atualizar_cabecalho = False
+    
+    if "ETAPA_KANBAN" not in cabecalhos:
+        cabecalhos.append("ETAPA_KANBAN")
+        df["ETAPA_KANBAN"] = ETAPAS_KANBAN[0]
+        precisa_atualizar_cabecalho = True
+        
+    if "STATUS_ENFERMAGEM" not in cabecalhos:
+        cabecalhos.append("STATUS_ENFERMAGEM")
+        df["STATUS_ENFERMAGEM"] = STATUS_ENFERMAGEM[0]
+        precisa_atualizar_cabecalho = True
 
-def atualizar_status_enfermagem(aba, index_linha, novo_status):
-    """Atualiza o status de enfermagem do paciente."""
-    st.session_state['dados_excel'][aba].at[index_linha, 'STATUS_ENFERMAGEM'] = novo_status
+    if precisa_atualizar_cabecalho:
+        ws.update(range_name=f"A1:{gspread.utils.rowcol_to_a1(1, len(cabecalhos))}", values=[cabecalhos])
+        # Preenche valores default se acabou de criar
+        if not df.empty:
+             ws.update(
+                 range_name=f"{gspread.utils.rowcol_to_a1(2, cabecalhos.index('ETAPA_KANBAN')+1)}:{gspread.utils.rowcol_to_a1(len(df)+1, cabecalhos.index('ETAPA_KANBAN')+1)}",
+                 values=[[ETAPAS_KANBAN[0]]] * len(df)
+             )
+             ws.update(
+                 range_name=f"{gspread.utils.rowcol_to_a1(2, cabecalhos.index('STATUS_ENFERMAGEM')+1)}:{gspread.utils.rowcol_to_a1(len(df)+1, cabecalhos.index('STATUS_ENFERMAGEM')+1)}",
+                 values=[[STATUS_ENFERMAGEM[0]]] * len(df)
+             )
+
+    st.session_state['dados_df'] = df
+
+def atualizar_celula_gsheets(aba_nome, linha_pandas, nome_coluna, novo_valor):
+    """Atualiza o DataFrame local e espelha a mudança na célula exata do Google Sheets."""
+    # Atualiza local (UI imediata)
+    st.session_state['dados_df'].at[linha_pandas, nome_coluna] = novo_valor
+    
+    # Atualiza Google Sheets
+    try:
+        ws = st.session_state['planilha_ativa'].worksheet(aba_nome)
+        cabecalhos = ws.row_values(1)
+        
+        # +1 porque no Sheets a lista de colunas começa em 1. 
+        # +2 na linha porque linha 1 é cabeçalho e pandas index começa em 0.
+        col_index = cabecalhos.index(nome_coluna) + 1
+        row_index = linha_pandas + 2 
+        
+        ws.update_cell(row_index, col_index, novo_valor)
+    except Exception as e:
+        st.error(f"Erro ao salvar na nuvem: {e}")
 
 # ==========================================
 # INTERFACE PRINCIPAL
@@ -134,89 +163,77 @@ def atualizar_status_enfermagem(aba, index_linha, novo_status):
 def main():
     inicializar_estado()
     
-    st.title("🏥 Kanban de Altas Hospitalares")
+    st.title("🏥 Kanban de Altas Hospitalares - Google Sheets")
     
     # ------------------------------------------
-    # SIDEBAR - Controles, Upload e Download
+    # SIDEBAR - Conexão e Navegação
     # ------------------------------------------
     with st.sidebar:
-        st.header("⚙️ Configurações")
+        st.header("⚙️ Conexão Google Sheets")
         
-        arquivo_upado = st.file_uploader("1. Importe a Base de Dados (Excel)", type=['xlsx', 'xls'])
+        arquivo_credenciais = st.file_uploader("1. Envie o JSON (Conta de Serviço)", type=['json'])
+        url_planilha = st.text_input("2. Link da Planilha Google Sheets:")
         
-        if arquivo_upado is not None:
-            # Botão para processar o arquivo para não rodar a cada refresh se não quiser
-            if st.button("Carregar Dados"):
-                carregar_planilha(arquivo_upado)
+        if st.button("🔌 Conectar e Carregar"):
+            if arquivo_credenciais and url_planilha:
+                conectar_google_sheets(arquivo_credenciais, url_planilha)
+            else:
+                st.error("Forneça o arquivo JSON e a URL da planilha.")
                 
         st.divider()
         
-        if st.session_state['dados_excel'] is not None:
-            aba_selecionada = st.selectbox(
-                "2. Selecione a Data (Aba)", 
-                options=st.session_state['abas_disponiveis']
-            )
+        # Se estiver conectado, carrega a lista de abas
+        if st.session_state['planilha_ativa'] is not None:
+            abas = [ws.title for ws in st.session_state['planilha_ativa'].worksheets()]
+            aba_selecionada = st.selectbox("📅 Selecione o Dia (Aba):", options=abas)
             
-            st.divider()
-            st.subheader("💾 Exportar Dados")
-            excel_bytes = gerar_excel_download()
-            st.download_button(
-                label="📥 Baixar Planilha Atualizada",
-                data=excel_bytes,
-                file_name=f"Altas_Atualizadas.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
+            if st.button("🔄 Atualizar Dados desta Aba"):
+                with st.spinner("Sincronizando com a nuvem..."):
+                    carregar_dados_aba(aba_selecionada)
+                    
+            st.caption("Ações no Kanban salvam automaticamente na planilha.")
 
     # ------------------------------------------
     # ÁREA PRINCIPAL - Dashboard e Kanban
     # ------------------------------------------
-    if st.session_state['dados_excel'] is None:
-        st.info("👈 Por favor, faça o upload de uma planilha Excel na barra lateral para começar.")
-        st.write("**Colunas esperadas na planilha:** LEITO, UI, NOME, HORA ALTA MÉDICA, HORA ALTA HOSPITALAR")
+    if st.session_state['dados_df'] is None:
+        st.info("👈 Conecte-se ao Google Sheets no painel lateral esquerdo e clique em 'Atualizar Dados' para visualizar o Kanban.")
         return
 
-    # Pega o dataframe da aba (data) atual
-    df_atual = st.session_state['dados_excel'][aba_selecionada]
+    df_atual = st.session_state['dados_df']
     
-    # Validação de colunas básicas
-    colunas_faltantes = [col for col in COLUNAS_ESPERADAS if col not in df_atual.columns]
-    if colunas_faltantes:
-        st.warning(f"Atenção! As seguintes colunas não foram encontradas nesta aba: {', '.join(colunas_faltantes)}. O sistema tentará funcionar, mas algumas informações ficarão em branco.")
+    if df_atual.empty:
+        st.warning("A aba selecionada não possui dados (pacientes).")
+        return
 
     # --- MÉTRICAS ---
-    with st.expander("📊 Visão Geral do Dia (Dashboard)", expanded=False):
+    with st.expander("📊 Visão Geral do Dia", expanded=False):
         col_m1, col_m2, col_m3 = st.columns(3)
         total_altas = len(df_atual)
         altas_realizadas = len(df_atual[df_atual['ETAPA_KANBAN'] == "Alta Realizada"])
-        altas_pendentes = total_altas - altas_realizadas
         
         col_m1.metric("Total de Pacientes no Dia", total_altas)
         col_m2.metric("Altas Realizadas", altas_realizadas)
-        col_m3.metric("Altas Pendentes", altas_pendentes)
+        col_m3.metric("Altas Pendentes", total_altas - altas_realizadas)
         
-        # Gráfico simples
-        contagem_etapas = df_atual['ETAPA_KANBAN'].value_counts().reset_index()
-        contagem_etapas.columns = ['Etapa', 'Quantidade']
-        fig = px.bar(contagem_etapas, x='Etapa', y='Quantidade', title="Distribuição de Pacientes por Etapa")
+        contagem = df_atual['ETAPA_KANBAN'].value_counts().reset_index()
+        contagem.columns = ['Etapa', 'Quantidade']
+        fig = px.bar(contagem, x='Etapa', y='Quantidade', title="Pacientes por Etapa")
         st.plotly_chart(fig, use_container_width=True)
 
     st.markdown("---")
-    st.subheader(f"📅 Kanban - Data: {aba_selecionada}")
 
     # --- RENDERIZAÇÃO DO KANBAN ---
-    # Cria 7 colunas no layout do Streamlit
     cols = st.columns(len(ETAPAS_KANBAN))
     
     for idx_etapa, etapa in enumerate(ETAPAS_KANBAN):
         with cols[idx_etapa]:
-            # Cabeçalho da Coluna Kanban
             st.markdown(f'<div class="kanban-column-header">{etapa}</div>', unsafe_allow_html=True)
             
-            # Filtra os pacientes que estão nesta etapa
+            # Pacientes nesta etapa
             df_etapa = df_atual[df_atual['ETAPA_KANBAN'] == etapa]
             
             for index, row in df_etapa.iterrows():
-                # Extração segura das informações (caso a coluna não exista)
                 nome = row.get('NOME', 'Desconhecido')
                 leito = row.get('LEITO', 'N/A')
                 ui = row.get('UI', 'N/A')
@@ -224,22 +241,19 @@ def main():
                 hora_hosp = row.get('HORA ALTA HOSPITALAR', '--:--')
                 status_enf_atual = row.get('STATUS_ENFERMAGEM', 'Sem pendência')
                 
-                # Chave única para controle de componentes do paciente (usando index original para evitar duplicação de nomes iguais)
                 paciente_id = f"{aba_selecionada}_{index}"
                 
-                # HTML do Card Visual
+                # Card
                 st.markdown(f"""
                 <div class="kanban-card">
-                    <div class="kanban-title">🛏️ {leito} | {ui}</div>
+                    <div class="kanban-title">🛏️️ {leito} | {ui}</div>
                     <div class="kanban-info"><b>Nome:</b> {nome}</div>
                     <div class="kanban-info"><b>A. Médica:</b> {hora_med}</div>
                     <div class="kanban-info"><b>A. Hospitalar:</b> {hora_hosp}</div>
                 </div>
                 """, unsafe_allow_html=True)
                 
-                # Controles interativos logo abaixo do card (usando componentes Streamlit)
-                
-                # 1. Troca de Etapa (Movimentar Card)
+                # 1. Movimentação (Atualiza local e nuvem)
                 nova_etapa = st.selectbox(
                     "Mover para:", 
                     options=ETAPAS_KANBAN, 
@@ -248,44 +262,37 @@ def main():
                     label_visibility="collapsed"
                 )
                 if nova_etapa != etapa:
-                    mudar_etapa(aba_selecionada, index, nova_etapa)
-                    st.rerun() # Atualiza a tela imediatamente
+                    atualizar_celula_gsheets(aba_selecionada, index, "ETAPA_KANBAN", nova_etapa)
+                    st.rerun()
                 
-                # 2. Se estiver na etapa de Processo de Enfermagem, mostra status
+                # 2. Status Enfermagem
                 if etapa == "Processo de Enfermagem":
                     novo_status_enf = st.selectbox(
-                        "Status de Enfermagem:",
+                        "Status Enfermagem:",
                         options=STATUS_ENFERMAGEM,
                         index=STATUS_ENFERMAGEM.index(status_enf_atual) if status_enf_atual in STATUS_ENFERMAGEM else 0,
                         key=f"status_enf_{paciente_id}"
                     )
                     if novo_status_enf != status_enf_atual:
-                        atualizar_status_enfermagem(aba_selecionada, index, novo_status_enf)
+                        atualizar_celula_gsheets(aba_selecionada, index, "STATUS_ENFERMAGEM", novo_status_enf)
                         st.rerun()
                 
-                # 3. Checklist Expansível
-                with st.expander("📋 Checklist do Paciente"):
+                # 3. Checklist Local
+                with st.expander("📋 Checklist"):
                     if paciente_id not in st.session_state['checklists']:
                         st.session_state['checklists'][paciente_id] = []
                     
-                    # Mostrar itens existentes
                     itens_checklist = st.session_state['checklists'][paciente_id]
-                    if len(itens_checklist) == 0:
-                        st.write("Nenhum item cadastrado.")
-                    else:
-                        for i, item in enumerate(itens_checklist):
-                            # Um checkbox simples. Como não queremos persistir 'marcado/desmarcado' permanentemente na planilha,
-                            # deixamos no estado volátil da UI.
-                            st.checkbox(item, key=f"chk_{paciente_id}_{i}")
+                    for i, item in enumerate(itens_checklist):
+                        st.checkbox(item, key=f"chk_{paciente_id}_{i}")
                             
-                    # Adicionar novo item
                     novo_item = st.text_input("Novo item:", key=f"new_item_{paciente_id}")
-                    if st.button("➕ Adicionar", key=f"btn_add_{paciente_id}"):
+                    if st.button("➕ Add", key=f"btn_add_{paciente_id}"):
                         if novo_item:
                             st.session_state['checklists'][paciente_id].append(novo_item)
                             st.rerun()
 
-                st.write("---") # Divisor entre os cards
+                st.write("---")
 
 if __name__ == "__main__":
     main()
