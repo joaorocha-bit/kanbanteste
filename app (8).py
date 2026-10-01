@@ -90,7 +90,7 @@ st.markdown("""
 
     /* CARD COMPLETO E UNIFICADO (UTILIZANDO CONTAINER NATIVO DO STREAMLIT) */
     div[data-testid="stVerticalBlockBorderWrapper"]:has(.patient-name-compact) {
-        background-color: #ffffff !important;
+        background-color: #f8fafc !important;
         border-radius: 14px !important;
         border: 1px solid #e2e8f0 !important;
         box-shadow: 0 2px 6px rgba(0,0,0,0.02) !important;
@@ -107,7 +107,7 @@ st.markdown("""
     .patient-name-compact { font-size: 15px; font-weight: 800; color: #0f172a; margin: 2px 0 4px 0; text-transform: uppercase; }
     .patient-time-compact { font-size: 12px; color: #475569; display: flex; gap: 6px; align-items: center; margin-bottom: 4px; }
     .badge-status-compact {
-        background-color: #ffffff; color: #92400e; font-size: 11px;
+        background-color: #f8fafc; color: #92400e; font-size: 11px;
         font-weight: 700; padding: 3px 8px; border-radius: 12px; display: inline-block; margin-bottom: 6px;
     }
 
