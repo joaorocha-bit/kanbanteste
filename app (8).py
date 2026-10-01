@@ -303,7 +303,7 @@ def main():
     st.markdown("""
         <div class="header-container">
             <div>
-                <h1 class="brand-title">🏥 VidaMais | Kanban de Alta Hospitalar</h1>
+                <h1 class="brand-title"> Kanban de Alta Hospitalar</h1>
                 <p class="brand-subtitle">Gestão visual e monitoramento de fluxo de alta hospitalar.</p>
             </div>
         </div>
