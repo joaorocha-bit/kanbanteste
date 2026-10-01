@@ -1,344 +1,291 @@
-"""
-Kanban de Altas Hospitalares - piloto
-Drag-and-drop + checklist dentro do card (clique no card abre o diálogo).
-Dados 100% fictícios.
-
-Execução local:
-    pip install -r requirements.txt
-    streamlit run app.py
-"""
-
-import json
-from datetime import date, timedelta
-
 import streamlit as st
+import pandas as pd
+import plotly.express as px
+from io import BytesIO
 
-try:
-    from streamlit_kanban_board_goviceversa import kanban_board
-except ImportError:
-    st.error(
-        "Componente não instalado. Rode `pip install -r requirements.txt` "
-        "(ou `pip install streamlit-kanban-board-goviceversa`)."
-    )
-    st.stop()
-
+# ==========================================
+# CONFIGURAÇÃO INICIAL DA PÁGINA
+# ==========================================
 st.set_page_config(
     page_title="Kanban de Altas Hospitalares",
     page_icon="🏥",
     layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-# --------------------------------------------------------------------------- #
-# CONFIGURAÇÃO
-# --------------------------------------------------------------------------- #
-ETAPAS = [
-    {"id": "previsao", "name": "🗓️ Alta prevista", "color": "#3E7CB1"},
-    {"id": "preparo", "name": "⚙️ Em preparo", "color": "#D98324"},
-    {"id": "pendencias", "name": "⚠️ Com pendência", "color": "#C0392B"},
-    {"id": "liberado", "name": "🚪 Liberado p/ sair", "color": "#7D5BA6"},
-    {"id": "concluida", "name": "✅ Alta efetivada", "color": "#2E8B57"},
-]
-ETAPA_NOME = {e["id"]: e["name"] for e in ETAPAS}
-ETAPA_FINAL = "concluida"
-
-CHECKLIST = [
-    "Sumário de alta preenchido",
-    "Receitas e prescrição de casa entregues",
-    "Conciliação medicamentosa revisada",
-    "Orientação ao paciente / acompanhante",
-    "Retorno ambulatorial agendado",
-    "Exames e laudos pendentes liberados",
-    "Transporte / remoção definido",
-    "Liberação administrativa (convênio / faturamento)",
+# ==========================================
+# CONSTANTES E LISTAS DE OPÇÕES
+# ==========================================
+ETAPAS_KANBAN = [
+    "Altas Previstas",
+    "Altas Prescritas",
+    "Altas Administrativas",
+    "Processo de Enfermagem",
+    "Transporte",
+    "Pendência Paciente/Familiar",
+    "Alta Realizada"
 ]
 
-ICONE_RISCO = {"Baixo": "🟢", "Médio": "🟡", "Alto": "🔴"}
-RISCOS = list(ICONE_RISCO)
+STATUS_ENFERMAGEM = [
+    "Sem pendência",
+    "Ag medicação", 
+    "Ag transfusão", 
+    "Paciente com dor", 
+    "Ag exame", 
+    "Aguarda retirada de cateter", 
+    "Ag avaliação médica", 
+    "Ag. Fisioterapia", 
+    "Ag Curativo", 
+    "Ag orientações de enfermagem", 
+    "Ag plano educacional"
+]
 
+COLUNAS_ESPERADAS = ["LEITO", "UI", "NOME", "HORA ALTA MÉDICA", "HORA ALTA HOSPITALAR"]
 
-# --------------------------------------------------------------------------- #
-# DADOS FICTÍCIOS
-# --------------------------------------------------------------------------- #
-def dados_ficticios():
-    hoje = date.today()
-
-    def card(cid, nome, idade, sexo, leito, setor, dx, medico, conv, dias, risco,
-             etapa, feitos, obs=""):
-        return {
-            "id": cid, "nome": nome, "idade": idade, "sexo": sexo, "leito": leito,
-            "setor": setor, "diagnostico": dx, "medico": medico, "convenio": conv,
-            "previsao": (hoje + timedelta(days=dias)).isoformat(), "risco": risco,
-            "etapa": etapa, "obs": obs,
-            "checks": {item: (item in feitos) for item in CHECKLIST},
-        }
-
-    return [
-        card("PAC-001", "Maria Aparecida Souza", 72, "F", "301-A", "Clínica Médica",
-             "ICC descompensada", "Dr. Renato Lima", "Unimed", 0, "Alto", "pendencias",
-             [CHECKLIST[0], CHECKLIST[2]],
-             "Aguarda vaga em home care para oxigenoterapia."),
-        card("PAC-002", "João Batista Ferreira", 58, "M", "212-B", "Cardiologia",
-             "Pós-IAM sem supra", "Dra. Carla Nunes", "SUS", 0, "Médio", "liberado",
-             CHECKLIST[:6], "Familiar chega às 14h para buscar."),
-        card("PAC-003", "Ana Clara Ribeiro", 34, "F", "405", "Obstetrícia",
-             "Pós-parto cesárea (D2)", "Dr. Marcos Tavares", "Bradesco Saúde", 0,
-             "Baixo", "preparo", [CHECKLIST[3]], "Teste do pezinho do RN já coletado."),
-        card("PAC-004", "Sebastião Moreira", 81, "M", "118-A", "Clínica Médica",
-             "Pneumonia comunitária", "Dr. Renato Lima", "SUS", 1, "Alto", "previsao",
-             [], "Mora sozinho — avaliar rede de apoio com serviço social."),
-        card("PAC-005", "Patrícia Gomes Alves", 46, "F", "220", "Cirurgia Geral",
-             "Pós-colecistectomia videolaparoscópica", "Dra. Helena Prado", "Amil", 0,
-             "Baixo", "liberado", CHECKLIST[:5] + [CHECKLIST[6]],
-             "Falta liberação do faturamento."),
-        card("PAC-006", "Carlos Eduardo Pinto", 67, "M", "307-B", "Neurologia",
-             "AVC isquêmico em reabilitação", "Dr. Felipe Andrade", "SulAmérica", 2,
-             "Alto", "previsao", [],
-             "Necessita transporte em maca e fisioterapia domiciliar."),
-        card("PAC-007", "Luiza Martins Dias", 29, "F", "410", "Ortopedia",
-             "Pós-osteossíntese de tíbia", "Dra. Helena Prado", "SUS", 1, "Médio",
-             "preparo", CHECKLIST[:2], "Aguardando muletas da fisioterapia."),
-        card("PAC-008", "Antônio Carlos Ramos", 75, "M", "115-B", "Clínica Médica",
-             "DPOC exacerbado", "Dr. Renato Lima", "Unimed", 0, "Médio", "concluida",
-             CHECKLIST, "Alta efetivada às 10h32."),
-        card("PAC-009", "Rosa Maria Beltrão", 63, "F", "308-A", "Nefrologia",
-             "DRC — internação por hipervolemia", "Dra. Carla Nunes", "SUS", 1,
-             "Alto", "pendencias", [CHECKLIST[2]],
-             "Confirmar vaga na clínica de diálise de origem."),
-        card("PAC-010", "Fernando Queiroz", 51, "M", "206", "Cirurgia Geral",
-             "Pós-herniorrafia inguinal", "Dra. Helena Prado", "Porto Seguro", 0,
-             "Baixo", "preparo", [CHECKLIST[0]], ""),
-    ]
-
-
-# --------------------------------------------------------------------------- #
-# ESTADO
-# --------------------------------------------------------------------------- #
-for chave, valor in {
-    "cards": None, "log": [], "evento": None,
-    "paciente_aberto": None, "mostrar_dialog": False, "board_rev": 0,
-}.items():
-    if chave not in st.session_state:
-        st.session_state[chave] = dados_ficticios() if chave == "cards" else valor
-
-
-def get_card(cid):
-    return next(c for c in st.session_state.cards if c["id"] == cid)
-
-
-def progresso(card):
-    return sum(1 for v in card["checks"].values() if v), len(CHECKLIST)
-
-
-# --------------------------------------------------------------------------- #
-# MONTAGEM DO CARD PARA O COMPONENTE
-# --------------------------------------------------------------------------- #
-def para_componente(card):
-    """Converte o paciente no formato de 'deal' esperado pelo componente."""
-    feitos, total = progresso(card)
-    pendentes = [i for i, ok in card["checks"].items() if not ok]
-    atrasado = card["previsao"] < date.today().isoformat() and card["etapa"] != ETAPA_FINAL
-    pct = int(100 * feitos / total)
-    cor_barra = "#2E8B57" if feitos == total else ("#D98324" if feitos else "#C0392B")
-
-    # Checklist desenhado dentro do card (visual; a edição é no diálogo)
-    linhas = "".join(
-        f"<div style='font-size:10.5px;line-height:1.5;"
-        f"color:{'#2E8B57' if card['checks'][i] else '#8a94a6'}'>"
-        f"{'☑' if card['checks'][i] else '☐'} {i}</div>"
-        for i in CHECKLIST
-    )
-    html = f"""
-    <div style="margin-top:6px">
-      <div style="font-size:11px;margin-bottom:3px">
-        🩺 {card['diagnostico']}
-      </div>
-      <div style="background:#e6e9ef;border-radius:5px;height:7px;overflow:hidden">
-        <div style="width:{pct}%;height:7px;background:{cor_barra}"></div>
-      </div>
-      <div style="font-size:10.5px;margin:3px 0 5px 0;font-weight:600">
-        Checklist {feitos}/{total}{' · ⏰ alta atrasada' if atrasado else ''}
-      </div>
-      {linhas}
-      <div style="font-size:10px;color:#8a94a6;margin-top:5px">
-        {'✅ pronto para efetivar alta' if not pendentes else f'⏳ {len(pendentes)} pendência(s)'}
-        · clique para editar
-      </div>
-    </div>
-    """
-
-    return {
-        "id": card["id"],
-        "stage": card["etapa"],
-        "deal_id": f"{ICONE_RISCO[card['risco']]} {card['id']} · Leito {card['leito']}",
-        "company_name": card["nome"],
-        "product_type": card["setor"],
-        "date": card["previsao"],
-        "underwriter": card["medico"],
-        "priority": "high" if card["risco"] == "Alto" else
-                    ("medium" if card["risco"] == "Médio" else "low"),
-        "source": "VV" if card["risco"] == "Alto" else "OF",
-        "custom_html": html,
+# ==========================================
+# ESTILIZAÇÃO CSS CUSTOMIZADA (Cards e Kanban)
+# ==========================================
+st.markdown("""
+    <style>
+    .kanban-card {
+        background-color: #f9f9f9;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 15px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        border-left: 5px solid #0052cc;
+        color: #333;
     }
+    .kanban-title {
+        font-size: 16px;
+        font-weight: bold;
+        margin-bottom: 5px;
+        color: #1f1f1f;
+    }
+    .kanban-info {
+        font-size: 12px;
+        margin: 2px 0;
+        color: #555;
+    }
+    .kanban-column-header {
+        text-align: center;
+        padding: 10px;
+        background-color: #e3e8ee;
+        border-radius: 5px;
+        font-weight: bold;
+        margin-bottom: 10px;
+        color: #333;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
+# ==========================================
+# FUNÇÕES DE ESTADO E PROCESSAMENTO
+# ==========================================
+def inicializar_estado():
+    """Inicializa variáveis na sessão do Streamlit."""
+    if 'dados_excel' not in st.session_state:
+        st.session_state['dados_excel'] = None  # Guardará dicionário de abas -> DataFrames
+    if 'abas_disponiveis' not in st.session_state:
+        st.session_state['abas_disponiveis'] = []
+    if 'checklists' not in st.session_state:
+        st.session_state['checklists'] = {} # Formato: { 'Nome_Paciente': ['item1', 'item2'] }
 
-# --------------------------------------------------------------------------- #
-# SIDEBAR
-# --------------------------------------------------------------------------- #
-with st.sidebar:
-    st.header("🏥 Gestão de Altas")
-    st.caption("Piloto com dados fictícios — sem dados reais de pacientes.")
+def carregar_planilha(arquivo):
+    """Lê a planilha Excel e carrega as abas."""
+    try:
+        # Lê todas as abas do Excel
+        xls = pd.read_excel(arquivo, sheet_name=None)
+        st.session_state['dados_excel'] = xls
+        st.session_state['abas_disponiveis'] = list(xls.keys())
+        
+        # Garante que todas as planilhas tenham as colunas necessárias de estado
+        for aba, df in xls.items():
+            if 'ETAPA_KANBAN' not in df.columns:
+                df['ETAPA_KANBAN'] = ETAPAS_KANBAN[0] # Começa em Altas Previstas
+            if 'STATUS_ENFERMAGEM' not in df.columns:
+                df['STATUS_ENFERMAGEM'] = STATUS_ENFERMAGEM[0]
+            # Formata datas caso existam
+            df.columns = [str(c).strip().upper() for c in df.columns]
+            
+        st.success("Planilha carregada com sucesso!")
+    except Exception as e:
+        st.error(f"Erro ao carregar o arquivo Excel: {e}")
 
-    st.subheader("Filtros")
-    setores = sorted({c["setor"] for c in st.session_state.cards})
-    f_setor = st.multiselect("Setor", setores, default=setores)
-    f_risco = st.multiselect("Risco de readmissão", RISCOS, default=RISCOS)
-    ocultar_alta = st.checkbox("Ocultar altas efetivadas", value=False)
+def gerar_excel_download():
+    """Gera um arquivo Excel em memória para download a partir do estado atual."""
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        for aba, df in st.session_state['dados_excel'].items():
+            df.to_excel(writer, index=False, sheet_name=aba)
+    return output.getvalue()
 
-    st.divider()
-    if st.button("🔄 Restaurar dados de exemplo", use_container_width=True):
-        st.session_state.cards = dados_ficticios()
-        st.session_state.log = []
-        st.session_state.board_rev += 1
-        st.rerun()
+def mudar_etapa(aba, index_linha, nova_etapa):
+    """Atualiza a etapa do paciente no dataframe."""
+    st.session_state['dados_excel'][aba].at[index_linha, 'ETAPA_KANBAN'] = nova_etapa
 
-    st.download_button(
-        "📥 Exportar quadro (JSON)",
-        data=json.dumps(st.session_state.cards, ensure_ascii=False, indent=2),
-        file_name="quadro_altas.json",
-        mime="application/json",
-        use_container_width=True,
-    )
+def atualizar_status_enfermagem(aba, index_linha, novo_status):
+    """Atualiza o status de enfermagem do paciente."""
+    st.session_state['dados_excel'][aba].at[index_linha, 'STATUS_ENFERMAGEM'] = novo_status
 
-    if st.session_state.log:
+# ==========================================
+# INTERFACE PRINCIPAL
+# ==========================================
+def main():
+    inicializar_estado()
+    
+    st.title("🏥 Kanban de Altas Hospitalares")
+    
+    # ------------------------------------------
+    # SIDEBAR - Controles, Upload e Download
+    # ------------------------------------------
+    with st.sidebar:
+        st.header("⚙️ Configurações")
+        
+        arquivo_upado = st.file_uploader("1. Importe a Base de Dados (Excel)", type=['xlsx', 'xls'])
+        
+        if arquivo_upado is not None:
+            # Botão para processar o arquivo para não rodar a cada refresh se não quiser
+            if st.button("Carregar Dados"):
+                carregar_planilha(arquivo_upado)
+                
         st.divider()
-        st.subheader("Movimentações")
-        for linha in st.session_state.log[:8]:
-            st.caption(f"• {linha}")
-
-
-def visivel(c):
-    if ocultar_alta and c["etapa"] == ETAPA_FINAL:
-        return False
-    return c["setor"] in f_setor and c["risco"] in f_risco
-
-
-cards_visiveis = [c for c in st.session_state.cards if visivel(c)]
-
-
-# --------------------------------------------------------------------------- #
-# CABEÇALHO
-# --------------------------------------------------------------------------- #
-st.title("Kanban de Altas Hospitalares")
-st.caption("Arraste o card para mudar de etapa · clique no card para abrir o checklist.")
-
-hoje_iso = date.today().isoformat()
-m1, m2, m3, m4 = st.columns(4)
-m1.metric("Pacientes no quadro", len(cards_visiveis))
-m2.metric("Altas previstas hoje", sum(1 for c in cards_visiveis if c["previsao"] == hoje_iso))
-m3.metric("Com pendência", sum(1 for c in cards_visiveis if c["etapa"] == "pendencias"))
-m4.metric("Efetivadas", sum(1 for c in cards_visiveis if c["etapa"] == ETAPA_FINAL))
-
-
-# --------------------------------------------------------------------------- #
-# QUADRO
-# --------------------------------------------------------------------------- #
-resultado = kanban_board(
-    stages=ETAPAS,
-    deals=[para_componente(c) for c in cards_visiveis],
-    height=780,
-    key=f"kanban_altas_{st.session_state.board_rev}",
-)
-
-# ---- Trata o arraste --------------------------------------------------------
-if resultado and resultado.get("moved_deal"):
-    mov = resultado["moved_deal"]
-    assinatura = ("move", mov.get("deal_id"), mov.get("to_stage"))
-
-    if assinatura != st.session_state.evento:
-        st.session_state.evento = assinatura
-        card = get_card(mov["deal_id"])
-        destino = mov["to_stage"]
-        feitos, total = progresso(card)
-
-        # Regra crítica: só efetiva a alta com checklist 100% concluído
-        if destino == ETAPA_FINAL and feitos < total:
-            st.error(
-                f"⛔ **{card['nome']}** não pode ir para *Alta efetivada*: "
-                f"faltam {total - feitos} item(ns) do checklist crítico."
+        
+        if st.session_state['dados_excel'] is not None:
+            aba_selecionada = st.selectbox(
+                "2. Selecione a Data (Aba)", 
+                options=st.session_state['abas_disponiveis']
             )
-            st.session_state.board_rev += 1   # devolve o card à coluna de origem
-            st.rerun()
-        elif card["etapa"] != destino:
-            card["etapa"] = destino
-            st.session_state.log.insert(
-                0, f"{card['id']} — {card['nome']} → {ETAPA_NOME[destino]}"
+            
+            st.divider()
+            st.subheader("💾 Exportar Dados")
+            excel_bytes = gerar_excel_download()
+            st.download_button(
+                label="📥 Baixar Planilha Atualizada",
+                data=excel_bytes,
+                file_name=f"Altas_Atualizadas.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
-            st.rerun()
 
-# ---- Trata o clique no card -------------------------------------------------
-if resultado and resultado.get("clicked_deal"):
-    cid = resultado["clicked_deal"].get("id") or resultado["clicked_deal"].get("deal_id")
-    if cid and st.session_state.paciente_aberto != cid:
-        st.session_state.paciente_aberto = cid
-        st.session_state.mostrar_dialog = True
+    # ------------------------------------------
+    # ÁREA PRINCIPAL - Dashboard e Kanban
+    # ------------------------------------------
+    if st.session_state['dados_excel'] is None:
+        st.info("👈 Por favor, faça o upload de uma planilha Excel na barra lateral para começar.")
+        st.write("**Colunas esperadas na planilha:** LEITO, UI, NOME, HORA ALTA MÉDICA, HORA ALTA HOSPITALAR")
+        return
 
+    # Pega o dataframe da aba (data) atual
+    df_atual = st.session_state['dados_excel'][aba_selecionada]
+    
+    # Validação de colunas básicas
+    colunas_faltantes = [col for col in COLUNAS_ESPERADAS if col not in df_atual.columns]
+    if colunas_faltantes:
+        st.warning(f"Atenção! As seguintes colunas não foram encontradas nesta aba: {', '.join(colunas_faltantes)}. O sistema tentará funcionar, mas algumas informações ficarão em branco.")
 
-# --------------------------------------------------------------------------- #
-# DIÁLOGO DO CARD — checklist editável
-# --------------------------------------------------------------------------- #
-if st.session_state.mostrar_dialog and st.session_state.paciente_aberto:
-    card = get_card(st.session_state.paciente_aberto)
+    # --- MÉTRICAS ---
+    with st.expander("📊 Visão Geral do Dia (Dashboard)", expanded=False):
+        col_m1, col_m2, col_m3 = st.columns(3)
+        total_altas = len(df_atual)
+        altas_realizadas = len(df_atual[df_atual['ETAPA_KANBAN'] == "Alta Realizada"])
+        altas_pendentes = total_altas - altas_realizadas
+        
+        col_m1.metric("Total de Pacientes no Dia", total_altas)
+        col_m2.metric("Altas Realizadas", altas_realizadas)
+        col_m3.metric("Altas Pendentes", altas_pendentes)
+        
+        # Gráfico simples
+        contagem_etapas = df_atual['ETAPA_KANBAN'].value_counts().reset_index()
+        contagem_etapas.columns = ['Etapa', 'Quantidade']
+        fig = px.bar(contagem_etapas, x='Etapa', y='Quantidade', title="Distribuição de Pacientes por Etapa")
+        st.plotly_chart(fig, use_container_width=True)
 
-    @st.dialog(f"🏥 {card['nome']} · Leito {card['leito']}", width="large")
-    def detalhes():
-        feitos, total = progresso(card)
+    st.markdown("---")
+    st.subheader(f"📅 Kanban - Data: {aba_selecionada}")
 
-        st.markdown(
-            f"**{card['idade']} anos · {card['sexo']} · {card['id']}**  \n"
-            f"{card['setor']} · {card['medico']} · {card['convenio']}  \n"
-            f"🩺 {card['diagnostico']}  \n"
-            f"Etapa: **{ETAPA_NOME[card['etapa']]}** · Previsão: {card['previsao']} · "
-            f"Risco: {ICONE_RISCO[card['risco']]} {card['risco']}"
-        )
-        st.progress(feitos / total, text=f"Checklist crítico {feitos}/{total}")
-        st.divider()
+    # --- RENDERIZAÇÃO DO KANBAN ---
+    # Cria 7 colunas no layout do Streamlit
+    cols = st.columns(len(ETAPAS_KANBAN))
+    
+    for idx_etapa, etapa in enumerate(ETAPAS_KANBAN):
+        with cols[idx_etapa]:
+            # Cabeçalho da Coluna Kanban
+            st.markdown(f'<div class="kanban-column-header">{etapa}</div>', unsafe_allow_html=True)
+            
+            # Filtra os pacientes que estão nesta etapa
+            df_etapa = df_atual[df_atual['ETAPA_KANBAN'] == etapa]
+            
+            for index, row in df_etapa.iterrows():
+                # Extração segura das informações (caso a coluna não exista)
+                nome = row.get('NOME', 'Desconhecido')
+                leito = row.get('LEITO', 'N/A')
+                ui = row.get('UI', 'N/A')
+                hora_med = row.get('HORA ALTA MÉDICA', '--:--')
+                hora_hosp = row.get('HORA ALTA HOSPITALAR', '--:--')
+                status_enf_atual = row.get('STATUS_ENFERMAGEM', 'Sem pendência')
+                
+                # Chave única para controle de componentes do paciente (usando index original para evitar duplicação de nomes iguais)
+                paciente_id = f"{aba_selecionada}_{index}"
+                
+                # HTML do Card Visual
+                st.markdown(f"""
+                <div class="kanban-card">
+                    <div class="kanban-title">🛏️ {leito} | {ui}</div>
+                    <div class="kanban-info"><b>Nome:</b> {nome}</div>
+                    <div class="kanban-info"><b>A. Médica:</b> {hora_med}</div>
+                    <div class="kanban-info"><b>A. Hospitalar:</b> {hora_hosp}</div>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Controles interativos logo abaixo do card (usando componentes Streamlit)
+                
+                # 1. Troca de Etapa (Movimentar Card)
+                nova_etapa = st.selectbox(
+                    "Mover para:", 
+                    options=ETAPAS_KANBAN, 
+                    index=ETAPAS_KANBAN.index(etapa),
+                    key=f"move_{paciente_id}",
+                    label_visibility="collapsed"
+                )
+                if nova_etapa != etapa:
+                    mudar_etapa(aba_selecionada, index, nova_etapa)
+                    st.rerun() # Atualiza a tela imediatamente
+                
+                # 2. Se estiver na etapa de Processo de Enfermagem, mostra status
+                if etapa == "Processo de Enfermagem":
+                    novo_status_enf = st.selectbox(
+                        "Status de Enfermagem:",
+                        options=STATUS_ENFERMAGEM,
+                        index=STATUS_ENFERMAGEM.index(status_enf_atual) if status_enf_atual in STATUS_ENFERMAGEM else 0,
+                        key=f"status_enf_{paciente_id}"
+                    )
+                    if novo_status_enf != status_enf_atual:
+                        atualizar_status_enfermagem(aba_selecionada, index, novo_status_enf)
+                        st.rerun()
+                
+                # 3. Checklist Expansível
+                with st.expander("📋 Checklist do Paciente"):
+                    if paciente_id not in st.session_state['checklists']:
+                        st.session_state['checklists'][paciente_id] = []
+                    
+                    # Mostrar itens existentes
+                    itens_checklist = st.session_state['checklists'][paciente_id]
+                    if len(itens_checklist) == 0:
+                        st.write("Nenhum item cadastrado.")
+                    else:
+                        for i, item in enumerate(itens_checklist):
+                            # Um checkbox simples. Como não queremos persistir 'marcado/desmarcado' permanentemente na planilha,
+                            # deixamos no estado volátil da UI.
+                            st.checkbox(item, key=f"chk_{paciente_id}_{i}")
+                            
+                    # Adicionar novo item
+                    novo_item = st.text_input("Novo item:", key=f"new_item_{paciente_id}")
+                    if st.button("➕ Adicionar", key=f"btn_add_{paciente_id}"):
+                        if novo_item:
+                            st.session_state['checklists'][paciente_id].append(novo_item)
+                            st.rerun()
 
-        c1, c2 = st.columns(2)
-        for i, item in enumerate(CHECKLIST):
-            alvo = c1 if i < len(CHECKLIST) / 2 else c2
-            novo = alvo.checkbox(item, value=card["checks"][item],
-                                 key=f"chk_{card['id']}_{i}")
-            if novo != card["checks"][item]:
-                card["checks"][item] = novo
-                st.session_state.board_rev += 1
-                st.rerun()
+                st.write("---") # Divisor entre os cards
 
-        b1, b2 = st.columns(2)
-        if b1.button("✔️ Marcar todos", use_container_width=True):
-            for item in CHECKLIST:
-                card["checks"][item] = True
-            st.session_state.board_rev += 1
-            st.rerun()
-        if b2.button("✖️ Limpar todos", use_container_width=True):
-            for item in CHECKLIST:
-                card["checks"][item] = False
-            st.session_state.board_rev += 1
-            st.rerun()
-
-        card["obs"] = st.text_area(
-            "Observações", value=card["obs"], key=f"obs_{card['id']}", height=90,
-            placeholder="Pendências, contatos, combinados...",
-        )
-
-        if st.button("Fechar", type="primary", use_container_width=True):
-            st.session_state.mostrar_dialog = False
-            st.session_state.paciente_aberto = None
-            st.session_state.board_rev += 1
-            st.rerun()
-
-    detalhes()
-
-st.caption(
-    "Protótipo para validação de fluxo. Dados fictícios — não inserir informação real "
-    "de paciente antes de definir hospedagem, autenticação e conformidade com a LGPD."
-)
+if __name__ == "__main__":
+    main()
