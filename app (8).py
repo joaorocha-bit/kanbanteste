@@ -88,26 +88,27 @@ st.markdown("""
         box-sizing: border-box;
     }
 
-    /* CARD COMPLETO E UNIFICADO (UTILIZANDO CONTAINER NATIVO DO STREAMLIT) */
-    div[data-testid="stVerticalBlockBorderWrapper"]:has(.patient-name-compact) {
-        background-color: #f8fafc !important;
+    /* CARD DO PACIENTE COM FUNDO 100% BRANCO */
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.patient-name-compact),
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.patient-name-compact) > div {
+        background-color: #ffffff !important;
         border-radius: 14px !important;
         border: 1px solid #e2e8f0 !important;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.02) !important;
-        padding: 14px !important;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.03) !important;
+        padding: 12px !important;
         margin-bottom: 10px !important;
     }
 
-    /* AJUSTE DO ESPAÇAMENTO INTERNO DO CARD */
-    div[data-testid="stVerticalBlockBorderWrapper"]:has(.patient-name-compact) > div[data-testid="stVerticalBlock"] {
-        gap: 0.4rem !important;
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.patient-name-compact) [data-testid="stVerticalBlock"] {
+        gap: 0.3rem !important;
+        background-color: #ffffff !important;
     }
 
     .patient-bed { font-size: 12px; font-weight: 600; color: #64748b; }
     .patient-name-compact { font-size: 15px; font-weight: 800; color: #0f172a; margin: 2px 0 4px 0; text-transform: uppercase; }
     .patient-time-compact { font-size: 12px; color: #475569; display: flex; gap: 6px; align-items: center; margin-bottom: 4px; }
     .badge-status-compact {
-        background-color: #f8fafc; color: #92400e; font-size: 11px;
+        background-color: #fef3c7; color: #92400e; font-size: 11px;
         font-weight: 700; padding: 3px 8px; border-radius: 12px; display: inline-block; margin-bottom: 6px;
     }
 
@@ -119,19 +120,19 @@ st.markdown("""
     div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stPopover"] > button {
         width: 100% !important;
         background-color: #ffffff !important;
-        border: 1px solid #e2e8f0 !important;
+        border: 1px solid #cbd5e1 !important;
         border-radius: 8px !important;
         color: #1e3a8a !important;
         font-size: 13px !important;
         font-weight: 600 !important;
         padding: 4px 12px !important;
         min-height: 36px !important;
-        box-shadow: none !important;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.02) !important;
         transition: all 0.2s ease;
     }
     div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stPopover"] > button:hover {
         background-color: #f8fafc !important;
-        border-color: #cbd5e1 !important;
+        border-color: #94a3b8 !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -296,7 +297,7 @@ def main():
     st.markdown("""
         <div class="header-container">
             <div>
-                <h1 class="brand-title"> Kanban de Alta Hospitalar</h1>
+                <h1 class="brand-title">🏥 VidaMais | Kanban de Alta Hospitalar</h1>
                 <p class="brand-subtitle">Gestão visual e monitoramento de fluxo de alta hospitalar.</p>
             </div>
         </div>
@@ -426,7 +427,7 @@ def main():
                         
                         paciente_key = f"p_{aba_selecionada}_{orig_idx}"
 
-                        # CARD UNIFICADO DO PACIENTE (CONTAINER NATIVO STREAMLIT)
+                        # CARD UNIFICADO DO PACIENTE (COM FUNDO BRANCO INTEGRAL)
                         with st.container(border=True):
                             st.markdown(f"""
                                 <div class="patient-bed">Leito {leito} &nbsp;|&nbsp; {ui}</div>
@@ -439,7 +440,7 @@ def main():
                                 {f'<div class="badge-status-compact">⚠️ {status_enf}</div>' if nome_etapa == "Processo de Enfermagem" and status_enf != "Sem pendência" else ''}
                             """, unsafe_allow_html=True)
 
-                            # BOTÃO SUTIL "VER DETALHES"
+                            # BOTÃO "VER DETALHES"
                             with st.popover("Ver detalhes", use_container_width=True):
                                 st.subheader(f"👤 {nome}")
                                 st.caption(f"Leito: {leito} | Unidade: {ui}")
