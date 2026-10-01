@@ -88,44 +88,48 @@ st.markdown("""
         box-sizing: border-box;
     }
 
-    /* CARD COMPLETO E UNIFICADO DO PACIENTE */
-    .patient-card-wrapper {
-        background-color: #ffffff;
-        border-radius: 14px; /* Arredondamento do card externo */
-        border: 1px solid #e2e8f0;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.02);
-        padding: 14px; /* Espaço interno para o botão não colar nas bordas */
-        margin-bottom: 12px;
+    /* CARD COMPLETO E UNIFICADO (UTILIZANDO CONTAINER NATIVO DO STREAMLIT) */
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.patient-name-compact) {
+        background-color: #ffffff !important;
+        border-radius: 14px !important;
+        border: 1px solid #e2e8f0 !important;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.02) !important;
+        padding: 14px !important;
+        margin-bottom: 10px !important;
     }
 
-    .patient-bed { font-size: 12px; font-weight: 600; color: #475569; }
-    .patient-name-compact { font-size: 14px; font-weight: 700; color: #0f172a; margin: 4px 0; }
-    .patient-time-compact { font-size: 12px; color: #475569; margin-bottom: 10px; display: flex; gap: 8px; align-items: center; }
+    /* AJUSTE DO ESPAÇAMENTO INTERNO DO CARD */
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.patient-name-compact) > div[data-testid="stVerticalBlock"] {
+        gap: 0.4rem !important;
+    }
+
+    .patient-bed { font-size: 12px; font-weight: 600; color: #64748b; }
+    .patient-name-compact { font-size: 15px; font-weight: 800; color: #0f172a; margin: 2px 0 4px 0; text-transform: uppercase; }
+    .patient-time-compact { font-size: 12px; color: #475569; display: flex; gap: 6px; align-items: center; margin-bottom: 4px; }
     .badge-status-compact {
         background-color: #fef3c7; color: #92400e; font-size: 11px;
-        font-weight: 700; padding: 3px 8px; border-radius: 12px; display: inline-block; margin-bottom: 10px;
+        font-weight: 700; padding: 3px 8px; border-radius: 12px; display: inline-block; margin-bottom: 6px;
     }
 
-    /* BOTAO "VER DETALHES" SUTIL DENTRO DO CARD */
-    .patient-card-wrapper div[data-testid="stPopover"] {
+    /* BOTÃO "VER DETALHES" SUTIL DENTRO DO CARD */
+    div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stPopover"] {
         width: 100%;
         margin-top: 4px;
     }
-    .patient-card-wrapper div[data-testid="stPopover"] > button {
+    div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stPopover"] > button {
         width: 100% !important;
         background-color: #ffffff !important;
-        border: 1px solid #e2e8f0 !important; /* Borda bem fina e clara */
-        border-radius: 8px !important; /* Botão com cantos próprios arredondados */
-        color: #1e3a8a !important; /* Azul escuro elegante para o texto */
-        font-size: 12px !important;
+        border: 1px solid #e2e8f0 !important;
+        border-radius: 8px !important;
+        color: #1e3a8a !important;
+        font-size: 13px !important;
         font-weight: 600 !important;
-        padding: 6px 12px !important;
-        min-height: 34px !important;
-        height: 34px !important;
+        padding: 4px 12px !important;
+        min-height: 36px !important;
         box-shadow: none !important;
         transition: all 0.2s ease;
     }
-    .patient-card-wrapper div[data-testid="stPopover"] > button:hover {
+    div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stPopover"] > button:hover {
         background-color: #f8fafc !important;
         border-color: #cbd5e1 !important;
     }
@@ -422,126 +426,123 @@ def main():
                         
                         paciente_key = f"p_{aba_selecionada}_{orig_idx}"
 
-                        # CARD UNIFICADO COM PADDING INTERNO
-                        st.markdown('<div class="patient-card-wrapper">', unsafe_allow_html=True)
-                        st.markdown(f"""
-                            <div class="patient-bed">Leito {leito} &nbsp;|&nbsp; {ui}</div>
-                            <div class="patient-name-compact">{nome}</div>
-                            <div class="patient-time-compact">
-                                <span>⏱️ <b>Médica:</b> {hora_med}</span>
-                                <span>|</span>
-                                <span><b>Hosp:</b> {hora_hosp}</span>
-                            </div>
-                            {f'<div class="badge-status-compact">⚠️ {status_enf}</div>' if nome_etapa == "Processo de Enfermagem" and status_enf != "Sem pendência" else ''}
-                        """, unsafe_allow_html=True)
+                        # CARD UNIFICADO DO PACIENTE (CONTAINER NATIVO STREAMLIT)
+                        with st.container(border=True):
+                            st.markdown(f"""
+                                <div class="patient-bed">Leito {leito} &nbsp;|&nbsp; {ui}</div>
+                                <div class="patient-name-compact">{nome}</div>
+                                <div class="patient-time-compact">
+                                    <span>⏱ <b>Médica:</b> {hora_med}</span>
+                                    <span>|</span>
+                                    <span><b>Hosp:</b> {hora_hosp}</span>
+                                </div>
+                                {f'<div class="badge-status-compact">⚠️ {status_enf}</div>' if nome_etapa == "Processo de Enfermagem" and status_enf != "Sem pendência" else ''}
+                            """, unsafe_allow_html=True)
 
-                        # BOTAO "VER DETALHES" COMO CAIXA SUTIL (como na imagem)
-                        with st.popover("Ver detalhes", use_container_width=True):
-                            st.subheader(f"👤 {nome}")
-                            st.caption(f"Leito: {leito} | Unidade: {ui}")
-                            st.write(f"⏱️ **Alta Médica:** {hora_med} | **Alta Hospitalar:** {hora_hosp}")
-                            st.divider()
+                            # BOTÃO SUTIL "VER DETALHES"
+                            with st.popover("Ver detalhes", use_container_width=True):
+                                st.subheader(f"👤 {nome}")
+                                st.caption(f"Leito: {leito} | Unidade: {ui}")
+                                st.write(f"⏱️ **Alta Médica:** {hora_med} | **Alta Hospitalar:** {hora_hosp}")
+                                st.divider()
 
-                            chk_json_str = row.get('CHECKLIST_JSON', '{}')
-                            try:
-                                chk_estado_dict = json.loads(chk_json_str) if chk_json_str else {}
-                            except:
-                                chk_estado_dict = {}
-
-                            # 1. Movimentação de Etapa
-                            st.write("➡️ **Mover Etapa do Paciente:**")
-                            nova_etapa = st.selectbox(
-                                "Selecione a nova etapa:",
-                                options=LISTA_ETAPAS_NOMES,
-                                index=LISTA_ETAPAS_NOMES.index(nome_etapa),
-                                key=f"mov_{paciente_key}"
-                            )
-
-                            if nova_etapa != nome_etapa:
-                                pendencias = []
-                                idx_nova = LISTA_ETAPAS_NOMES.index(nova_etapa)
-                                idx_atual = LISTA_ETAPAS_NOMES.index(nome_etapa)
-
-                                if idx_nova > idx_atual:
-                                    for item_cfg in st.session_state['checklist_padrao']:
-                                        item_nome = item_cfg['nome']
-                                        etapas_req = item_cfg.get('etapas_obrigatorias', [])
-                                        
-                                        item_exigido = False
-                                        for req in etapas_req:
-                                            if req in LISTA_ETAPAS_NOMES:
-                                                if LISTA_ETAPAS_NOMES.index(req) <= idx_nova:
-                                                    item_exigido = True
-                                                    break
-
-                                        if item_exigido:
-                                            is_checked = chk_estado_dict.get(item_nome, False)
-                                            if not is_checked:
-                                                pendencias.append(f"• **{item_nome}** (exigido para: {', '.join(etapas_req)})")
-
-                                if pendencias:
-                                    st.error(f"🚨 **Ação Bloqueada!** Faltam itens obrigatórios para avançar para '{nova_etapa}':\n\n" + "\n".join(pendencias))
-                                else:
-                                    atualizar_celula_gsheets(aba_selecionada, orig_idx, "ETAPA_KANBAN", nova_etapa)
-                                    registrar_evento_log(aba_selecionada, orig_idx, "MUDANCA_ETAPA", f"De '{nome_etapa}' para '{nova_etapa}'")
-                                    st.rerun()
-
-                            # 2. Status de Enfermagem
-                            if nova_etapa == "Processo de Enfermagem":
-                                st.write("🩺 **Pendência de Enfermagem:**")
-                                st_enf = st.selectbox(
-                                    "Selecione o status:",
-                                    options=STATUS_ENFERMAGEM,
-                                    index=STATUS_ENFERMAGEM.index(status_enf) if status_enf in STATUS_ENFERMAGEM else 0,
-                                    key=f"enf_{paciente_key}"
-                                )
-                                if st_enf != status_enf:
-                                    atualizar_celula_gsheets(aba_selecionada, orig_idx, "STATUS_ENFERMAGEM", st_enf)
-                                    registrar_evento_log(aba_selecionada, orig_idx, "STATUS_ENFERMAGEM", f"Status alterado para '{st_enf}'")
-                                    st.rerun()
-
-                            st.divider()
-
-                            # 3. Checklist
-                            st.write("📋 **Checklist Padronizado de Alta:**")
-                            houve_mudanca_chk = False
-                            
-                            for item_cfg in st.session_state['checklist_padrao']:
-                                item_nome = item_cfg['nome']
-                                etapas_req = item_cfg.get('etapas_obrigatorias', [])
-                                
-                                label_tag = f" 🔒 *(Obrigatório: {', '.join(etapas_req)})*" if etapas_req else ""
-                                val_atual = chk_estado_dict.get(item_nome, False)
-                                
-                                novo_val = st.checkbox(f"{item_nome}{label_tag}", value=val_atual, key=f"chk_{paciente_key}_{item_nome}")
-                                
-                                if novo_val != val_atual:
-                                    chk_estado_dict[item_nome] = novo_val
-                                    houve_mudanca_chk = True
-                                    acao = "Marcado" if novo_val else "Desmarcado"
-                                    registrar_evento_log(aba_selecionada, orig_idx, "CHECKLIST", f"{acao} item: '{item_nome}'")
-
-                            if houve_mudanca_chk:
-                                novo_chk_json = json.dumps(chk_estado_dict, ensure_ascii=False)
-                                atualizar_celula_gsheets(aba_selecionada, orig_idx, "CHECKLIST_JSON", novo_chk_json)
-                                st.rerun()
-
-                            # 4. Histórico
-                            with st.expander("📜 Histórico de Alterações (Timestamps)"):
-                                logs_str = row.get('HISTORICO_LOGS', '[]')
+                                chk_json_str = row.get('CHECKLIST_JSON', '{}')
                                 try:
-                                    logs_list = json.loads(logs_str) if logs_str else []
+                                    chk_estado_dict = json.loads(chk_json_str) if chk_json_str else {}
                                 except:
-                                    logs_list = []
+                                    chk_estado_dict = {}
 
-                                if logs_list:
-                                    for lg in reversed(logs_list):
-                                        st.caption(f"🕒 **{lg.get('timestamp')}** - [{lg.get('evento')}]: {lg.get('detalhe')}")
-                                else:
-                                    st.caption("Nenhum histórico registrado ainda.")
+                                # 1. Movimentação de Etapa
+                                st.write("➡️ **Mover Etapa do Paciente:**")
+                                nova_etapa = st.selectbox(
+                                    "Selecione a nova etapa:",
+                                    options=LISTA_ETAPAS_NOMES,
+                                    index=LISTA_ETAPAS_NOMES.index(nome_etapa),
+                                    key=f"mov_{paciente_key}"
+                                )
 
-                        # FECHAMENTO DO CARD UNIFICADO
-                        st.markdown('</div>', unsafe_allow_html=True)
+                                if nova_etapa != nome_etapa:
+                                    pendencias = []
+                                    idx_nova = LISTA_ETAPAS_NOMES.index(nova_etapa)
+                                    idx_atual = LISTA_ETAPAS_NOMES.index(nome_etapa)
+
+                                    if idx_nova > idx_atual:
+                                        for item_cfg in st.session_state['checklist_padrao']:
+                                            item_nome = item_cfg['nome']
+                                            etapas_req = item_cfg.get('etapas_obrigatorias', [])
+                                            
+                                            item_exigido = False
+                                            for req in etapas_req:
+                                                if req in LISTA_ETAPAS_NOMES:
+                                                    if LISTA_ETAPAS_NOMES.index(req) <= idx_nova:
+                                                        item_exigido = True
+                                                        break
+
+                                            if item_exigido:
+                                                is_checked = chk_estado_dict.get(item_nome, False)
+                                                if not is_checked:
+                                                    pendencias.append(f"• **{item_nome}** (exigido para: {', '.join(etapas_req)})")
+
+                                    if pendencias:
+                                        st.error(f"🚨 **Ação Bloqueada!** Faltam itens obrigatórios para avançar para '{nova_etapa}':\n\n" + "\n".join(pendencias))
+                                    else:
+                                        atualizar_celula_gsheets(aba_selecionada, orig_idx, "ETAPA_KANBAN", nova_etapa)
+                                        registrar_evento_log(aba_selecionada, orig_idx, "MUDANCA_ETAPA", f"De '{nome_etapa}' para '{nova_etapa}'")
+                                        st.rerun()
+
+                                # 2. Status de Enfermagem
+                                if nova_etapa == "Processo de Enfermagem":
+                                    st.write("🩺 **Pendência de Enfermagem:**")
+                                    st_enf = st.selectbox(
+                                        "Selecione o status:",
+                                        options=STATUS_ENFERMAGEM,
+                                        index=STATUS_ENFERMAGEM.index(status_enf) if status_enf in STATUS_ENFERMAGEM else 0,
+                                        key=f"enf_{paciente_key}"
+                                    )
+                                    if st_enf != status_enf:
+                                        atualizar_celula_gsheets(aba_selecionada, orig_idx, "STATUS_ENFERMAGEM", st_enf)
+                                        registrar_evento_log(aba_selecionada, orig_idx, "STATUS_ENFERMAGEM", f"Status alterado para '{st_enf}'")
+                                        st.rerun()
+
+                                st.divider()
+
+                                # 3. Checklist
+                                st.write("📋 **Checklist Padronizado de Alta:**")
+                                houve_mudanca_chk = False
+                                
+                                for item_cfg in st.session_state['checklist_padrao']:
+                                    item_nome = item_cfg['nome']
+                                    etapas_req = item_cfg.get('etapas_obrigatorias', [])
+                                    
+                                    label_tag = f" 🔒 *(Obrigatório: {', '.join(etapas_req)})*" if etapas_req else ""
+                                    val_atual = chk_estado_dict.get(item_nome, False)
+                                    
+                                    novo_val = st.checkbox(f"{item_nome}{label_tag}", value=val_atual, key=f"chk_{paciente_key}_{item_nome}")
+                                    
+                                    if novo_val != val_atual:
+                                        chk_estado_dict[item_nome] = novo_val
+                                        houve_mudanca_chk = True
+                                        acao = "Marcado" if novo_val else "Desmarcado"
+                                        registrar_evento_log(aba_selecionada, orig_idx, "CHECKLIST", f"{acao} item: '{item_nome}'")
+
+                                if houve_mudanca_chk:
+                                    novo_chk_json = json.dumps(chk_estado_dict, ensure_ascii=False)
+                                    atualizar_celula_gsheets(aba_selecionada, orig_idx, "CHECKLIST_JSON", novo_chk_json)
+                                    st.rerun()
+
+                                # 4. Histórico
+                                with st.expander("📜 Histórico de Alterações (Timestamps)"):
+                                    logs_str = row.get('HISTORICO_LOGS', '[]')
+                                    try:
+                                        logs_list = json.loads(logs_str) if logs_str else []
+                                    except:
+                                        logs_list = []
+
+                                    if logs_list:
+                                        for lg in reversed(logs_list):
+                                            st.caption(f"🕒 **{lg.get('timestamp')}** - [{lg.get('evento')}]: {lg.get('detalhe')}")
+                                    else:
+                                        st.caption("Nenhum histórico registrado ainda.")
 
             # --- INDICADORES DE TEMPO E LEAD TIME ---
             st.markdown("<br>---", unsafe_allow_html=True)
