@@ -91,43 +91,43 @@ st.markdown("""
     /* CARD COMPLETO E UNIFICADO DO PACIENTE */
     .patient-card-wrapper {
         background-color: #ffffff;
-        border-radius: 12px;
+        border-radius: 14px; /* Arredondamento do card externo */
         border: 1px solid #e2e8f0;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.03);
-        padding: 12px;
-        margin-bottom: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        padding: 14px; /* Espaço interno para o botão não colar nas bordas */
+        margin-bottom: 12px;
     }
 
-    .patient-bed { font-size: 11px; font-weight: 800; color: #2563eb; text-transform: uppercase; }
-    .patient-name-compact { font-size: 13px; font-weight: 700; color: #0f172a; margin: 4px 0; }
-    .patient-time-compact { font-size: 11px; color: #64748b; margin-bottom: 6px; }
+    .patient-bed { font-size: 12px; font-weight: 600; color: #475569; }
+    .patient-name-compact { font-size: 14px; font-weight: 700; color: #0f172a; margin: 4px 0; }
+    .patient-time-compact { font-size: 12px; color: #475569; margin-bottom: 10px; display: flex; gap: 8px; align-items: center; }
     .badge-status-compact {
-        background-color: #fef3c7; color: #92400e; font-size: 10px;
-        font-weight: 700; padding: 2px 8px; border-radius: 4px; display: inline-block; margin-bottom: 8px;
+        background-color: #fef3c7; color: #92400e; font-size: 11px;
+        font-weight: 700; padding: 3px 8px; border-radius: 12px; display: inline-block; margin-bottom: 10px;
     }
 
-    /* BOTAO SUTIL "VER DETALHES" DENTRO DO CARD */
+    /* BOTAO "VER DETALHES" SUTIL DENTRO DO CARD */
     .patient-card-wrapper div[data-testid="stPopover"] {
         width: 100%;
-        margin-top: 6px;
+        margin-top: 4px;
     }
     .patient-card-wrapper div[data-testid="stPopover"] > button {
         width: 100% !important;
         background-color: #ffffff !important;
-        border: 1px solid #e2e8f0 !important;
-        border-radius: 8px !important;
-        color: #334155 !important;
+        border: 1px solid #e2e8f0 !important; /* Borda bem fina e clara */
+        border-radius: 8px !important; /* Botão com cantos próprios arredondados */
+        color: #1e3a8a !important; /* Azul escuro elegante para o texto */
         font-size: 12px !important;
         font-weight: 600 !important;
-        padding: 4px 10px !important;
-        min-height: 32px !important;
-        height: 32px !important;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.02) !important;
+        padding: 6px 12px !important;
+        min-height: 34px !important;
+        height: 34px !important;
+        box-shadow: none !important;
+        transition: all 0.2s ease;
     }
     .patient-card-wrapper div[data-testid="stPopover"] > button:hover {
         background-color: #f8fafc !important;
         border-color: #cbd5e1 !important;
-        color: #0f172a !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -422,16 +422,20 @@ def main():
                         
                         paciente_key = f"p_{aba_selecionada}_{orig_idx}"
 
-                        # CARD UNIFICADO DO PACIENTE (REFERÊNCIA DA IMAGEM)
+                        # CARD UNIFICADO COM PADDING INTERNO
                         st.markdown('<div class="patient-card-wrapper">', unsafe_allow_html=True)
                         st.markdown(f"""
-                            <div class="patient-bed">🛏️ Leito {leito} | {ui}</div>
+                            <div class="patient-bed">Leito {leito} &nbsp;|&nbsp; {ui}</div>
                             <div class="patient-name-compact">{nome}</div>
-                            <div class="patient-time-compact">🕒 <b>Médica:</b> {hora_med} | <b>Hosp:</b> {hora_hosp}</div>
+                            <div class="patient-time-compact">
+                                <span>⏱️ <b>Médica:</b> {hora_med}</span>
+                                <span>|</span>
+                                <span><b>Hosp:</b> {hora_hosp}</span>
+                            </div>
                             {f'<div class="badge-status-compact">⚠️ {status_enf}</div>' if nome_etapa == "Processo de Enfermagem" and status_enf != "Sem pendência" else ''}
                         """, unsafe_allow_html=True)
 
-                        # BOTÃO SUTIL "VER DETALHES" DENTRO DO CARD
+                        # BOTAO "VER DETALHES" COMO CAIXA SUTIL (como na imagem)
                         with st.popover("Ver detalhes", use_container_width=True):
                             st.subheader(f"👤 {nome}")
                             st.caption(f"Leito: {leito} | Unidade: {ui}")
