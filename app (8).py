@@ -17,6 +17,11 @@ st.set_page_config(
 )
 
 # ==========================================
+# CONSTANTES E CREDENCIAIS DO GOOGLE SHEETS
+# ==========================================
+URL_PLANILHA = "https://docs.google.com/spreadsheets/d/1vBKXit6n1fNewFeMXFX7xVXSJrsk3c_l9VauV_0m1lY/edit?usp=sharing"
+
+# ==========================================
 # CONSTANTES E CONFIGURAÇÕES DO KANBAN
 # ==========================================
 ETAPAS_KANBAN = [
@@ -176,12 +181,14 @@ def inicializar_estado():
 # ==========================================
 # INTEGRAÇÃO E BANCO DE DADOS (GOOGLE SHEETS)
 # ==========================================
-def conectar_google_sheets(arquivo_credenciais, url_planilha):
+def conectar_google_sheets():
     try:
-        credenciais_dict = json.load(arquivo_credenciais)
+        # Recupera as credenciais de st.secrets de forma segura
+        credenciais_dict = dict(st.secrets["gcp_service_account"])
         credentials = Credentials.from_service_account_info(credenciais_dict, scopes=SCOPES)
+        
         client = gspread.authorize(credentials)
-        planilha = client.open_by_url(url_planilha)
+        planilha = client.open_by_url(URL_PLANILHA)
         st.session_state['client_gsheets'] = client
         st.session_state['planilha_ativa'] = planilha
         return True
@@ -299,6 +306,10 @@ def obter_valor_campo(row, nome_base, padrao='--:--'):
 def main():
     inicializar_estado()
     
+    # CONEXÃO AUTOMÁTICA
+    if st.session_state['planilha_ativa'] is None:
+        conectar_google_sheets()
+    
     # --- HEADER PRINCIPAL ---
     st.markdown("""
         <div class="header-container">
@@ -346,7 +357,7 @@ def main():
                 st.rerun()
 
     if st.session_state['planilha_ativa'] is None:
-        st.warning("⚠️ Planilha não conectada! Por favor, configure a conexão no painel na parte inferior da página.")
+        st.error("⚠️ Não foi possível conectar à planilha! Verifique se a variável gcp_service_account está configurada nos Secrets do Streamlit.")
 
     # --- FILTROS E NAVEGAÇÃO ---
     if st.session_state['planilha_ativa'] is not None:
@@ -433,7 +444,7 @@ def main():
                         
                         paciente_key = f"p_{aba_selecionada}_{orig_idx}"
 
-                        # CARD UNIFICADO DO PACIENTE (UTILIZANDO A CLASSE PARA FORÇAR O FUNDO BRANCO INTEGRAL NO CONTAINER)
+                        # CARD UNIFICADO DO PACIENTE
                         with st.container(border=True):
                             st.markdown(f"""
                                 <div class="patient-card-box">
@@ -462,7 +473,7 @@ def main():
                                     chk_estado_dict = {}
 
                                 # 1. Movimentação de Etapa
-                                st.write("➡️️ **Mover Etapa do Paciente:**")
+                                st.write("➡ **Mover Etapa do Paciente:**")
                                 nova_etapa = st.selectbox(
                                     "Selecione a nova etapa:",
                                     options=LISTA_ETAPAS_NOMES,
@@ -557,7 +568,7 @@ def main():
             st.markdown("<br>---", unsafe_allow_html=True)
             st.subheader("📈 Indicadores de Tempo & Lead Time")
 
-            tab_ind1, tab_ind2 = st.tabs(["⏱️️ Tempo Médio do Processo", "📊 Gargalos do Dia"])
+            tab_ind1, tab_ind2 = st.tabs(["⏱ Tempo Médio do Processo", "📊 Gargalos do Dia"])
 
             with tab_ind1:
                 dados_tempo = []
@@ -612,27 +623,6 @@ def main():
                         st.plotly_chart(fig_enf, use_container_width=True)
                     else:
                         st.info("Nenhuma pendência mapeada na Enfermagem no momento.")
-
-    # ==========================================
-    # PAINEL DE CONEXÃO GOOGLE SHEETS (RODAPÉ)
-    # ==========================================
-    st.markdown("<br><br>---", unsafe_allow_html=True)
-    with st.expander("🔌 Conexão e Configuração do Google Sheets (Avançado)", expanded=(st.session_state['planilha_ativa'] is None)):
-        st.caption("Painel administrativo para autenticação e conexão com a base de dados.")
-        
-        col_conn1, col_conn2 = st.columns(2)
-        with col_conn1:
-            arquivo_credenciais = st.file_uploader("Upload do arquivo JSON de Credenciais", type=['json'])
-        with col_conn2:
-            url_planilha = st.text_input("Link / URL da Planilha Google Sheets:")
-
-        if st.button("🔌 Conectar e Salvar Conexão", use_container_width=True):
-            if arquivo_credenciais and url_planilha:
-                if conectar_google_sheets(arquivo_credenciais, url_planilha):
-                    st.success("Conectado com sucesso ao Google Sheets!")
-                    st.rerun()
-            else:
-                st.warning("Envie o arquivo de credenciais JSON e o link da planilha.")
 
 if __name__ == "__main__":
     main()
